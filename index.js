@@ -4,13 +4,19 @@ try { loadEnvFile(new URL('./.env', import.meta.url)) } catch (error) {
   if (error.code !== 'ENOENT') throw error
 }
 
-if (process.argv[2] === '--site-worker') await import('./whatsapp-test/site-worker.mjs')
+const workers = []
+const mode = process.argv[2]
+const workersOnly = mode === '--site-worker' || mode === '--xelira-site-worker'
+if (mode === '--site-worker' || (!workersOnly && process.env.DOMA_SITE_WORKER === 'true')) {
+  workers.push(import('./whatsapp-test/site-worker.mjs').then(({ runDomma }) => runDomma())
+    .catch(() => console.error('Bot Connect : service Domma indisponible.')))
+}
+if (mode === '--xelira-site-worker' || (!workersOnly && process.env.XELIRA_SITE_WORKER === 'true')) {
+  workers.push(import('./whatsapp-test/xelira-worker.mjs').then(({ runXelira }) => runXelira())
+    .catch(() => console.error('Bot Connect : service Xelira MD indisponible.')))
+}
+if (workersOnly) await Promise.all(workers)
 else {
   process.argv.splice(2, process.argv.length - 2, '--hosted')
-  const personal = import('./whatsapp-test/index.mjs')
-  if (process.env.DOMA_SITE_WORKER === 'true') {
-    const website = import('./whatsapp-test/site-worker.mjs')
-      .catch(() => console.error('Bot Connect : index du service indisponible.'))
-    await Promise.all([personal, website])
-  } else await personal
+  await Promise.all([import('./whatsapp-test/index.mjs'), ...workers])
 }
