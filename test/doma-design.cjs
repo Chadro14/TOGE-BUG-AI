@@ -20,6 +20,14 @@ const styles = {
   rainboweffect: ['#170e30', '#2d2058', '#fb736c', '#73dfea', 'sans-serif'],
   shadow: ['#14171b', '#303946', '#b5c6da', '#e8eef4', 'sans-serif'],
   typographytext: ['#f5eadd', '#e3cfb0', '#2d2116', '#6d4531', 'serif'],
+  smokyneon: ['#101220', '#414358', '#c6bcff', '#86ffeb', 'sans-serif', true],
+  flamingtext: ['#280a07', '#861e10', '#ff6728', '#fff196', 'sans-serif', true],
+  underwatertext: ['#04162e', '#075767', '#4bbcff', '#b3ffe7', 'sans-serif', true],
+  stonetext: ['#1b2026', '#55595e', '#abb3bd', '#eef0ed', 'serif'],
+  metalliceffect: ['#12161d', '#3b4d58', '#9cb5c6', '#efffff', 'sans-serif'],
+  balloontext: ['#391630', '#713750', '#ff9ed6', '#ffdef2', 'sans-serif', true],
+  summerbeach: ['#00435c', '#008c92', '#ffce79', '#fff6c2', 'serif'],
+  papercutstyle: ['#3e294a', '#86476b', '#ffd1a8', '#fff2d6', 'serif'],
 }
 
 const escapeXml = text => text.replace(/[<>&"']/g, char => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[char])

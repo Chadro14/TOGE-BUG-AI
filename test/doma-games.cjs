@@ -62,6 +62,16 @@ function pick(args) {
   return `Je choisis · ${randomItem(choices)}`
 }
 
+function eightBall(args) {
+  if (!args) throw new MemeInputError('Écris une question après .8ball.')
+  return randomItem(['Oui, sans hésiter.', 'Probablement.', 'Demande-moi plus tard.', 'Difficile à dire.', 'J’en doute.'])
+}
+
+function rate(args) {
+  if (!args || args.length > 120) throw new MemeInputError('Écris ce que tu veux noter après .rate.')
+  return `${args} · ${randomInt(11)}/10\nNote tirée au hasard.`
+}
+
 function tictactoe(args, chat) {
   const action = args.toLowerCase()
   if (action === 'stop') {
@@ -97,4 +107,8 @@ module.exports = {
   dare: () => randomItem(dares),
   fact: () => randomItem(facts),
   quotes: () => randomItem(quotes),
+  '8ball': eightBall,
+  rate,
+  pickupline: () => randomItem(['Si on était dans un manga, je tournerais la page juste pour te revoir.', 'Tu as un plan ? Je me suis perdu dans ton sourire.', 'On fait équipe pour le prochain chapitre ?']),
+  shortquote: () => randomItem(['La patience est amère, mais son fruit est doux. — Proverbe', 'À chaque jour suffit sa peine. — Proverbe', 'Qui sème le vent récolte la tempête. — Proverbe']),
 }

@@ -7,6 +7,7 @@ const information = require('./doma-information.cjs')
 const games = require('./doma-games.cjs')
 const { characters, series, showCharacter, showAnime } = require('./doma-anime.cjs')
 const { styles, makeTextArtwork, makeQr } = require('./doma-design.cjs')
+const { reactions, reactionAliases, photoTopics, showReaction, showPhoto } = require('./doma-collections.cjs')
 
 const audioEffects = {
   bass: 'bass=g=9',
@@ -20,14 +21,16 @@ const audioEffects = {
   slow: 'atempo=0.75',
   smooth: 'lowpass=f=4500',
   squirrel: 'aresample=48000,asetrate=72000,aresample=48000',
+  earrape: 'volume=3,alimiter=limit=0.6:level=disabled',
 }
 
 const informationUsage = { weather: 'ville', translate: 'fr>en texte', itunes: 'titre ou artiste', define: 'mot anglais' }
-const gameUsage = { math: '12 * 7', suit: 'pierre, papier ou ciseaux', pick: 'choix A|choix B', tictactoe: 'start ou numéro de case' }
+const gameUsage = { math: '12 * 7', suit: 'pierre, papier ou ciseaux', pick: 'choix A|choix B', tictactoe: 'start ou numéro de case', '8ball': 'question', rate: 'sujet' }
 const imageEffects = {
   blur: 'boxblur=8:2',
   invert: 'negate',
   pixelate: 'scale=48:48:force_original_aspect_ratio=decrease,scale=iw*8:ih*8:flags=neighbor',
+  rainbow: 'hue=h=45:s=2',
 }
 
 const commands = [
@@ -79,6 +82,9 @@ const commands = [
   ...Object.keys(styles).map(name => ({ section: 'Images', name, usage: 'texte court', run: (args, { send }) => send({
     image: makeTextArtwork(args, name), mimetype: 'image/png', caption: 'Ton visuel est prêt.',
   }) })),
+  ...Object.keys(reactions).map(name => ({ section: 'Anime', name, aliases: reactionAliases[name], run: (_, context) => showReaction(name, context) })),
+  { section: 'Images', name: 'wikimedia', usage: 'sujet', run: showPhoto },
+  ...Object.entries(photoTopics).map(([name, query]) => ({ section: 'Images', name, run: (_, context) => showPhoto(query, context) })),
 ]
 
 const byName = new Map(commands.flatMap(command => [command.name, ...(command.aliases ?? [])].map(name => [name, command])))
