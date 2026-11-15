@@ -43,17 +43,27 @@ function menu(commands, selected) {
     sections.get(id).commands.push(`│ *· .${fancy(name)}*${usage ? ` ${usage}` : ''}`)
   }
   const categories = [...sections.values()]
-  const category = /^\d+$/.test(selected ?? '') ? categories[Number(selected) - 1] : sections.get(selected)
+  const [section, page = '1'] = (selected ?? '').trim().split(/\s+/)
+  const category = /^\d+$/.test(section) ? categories[Number(section) - 1] : sections.get(section)
   const count = commands.length
+  const pageSize = 16
+  const totalPages = category ? Math.ceil(category.commands.length / pageSize) : 1
+  const current = /^\d+$/.test(page) ? Math.min(Math.max(Number(page), 1), totalPages) : 1
+  const start = (current - 1) * pageSize
   const body = category
-    ? [`╭──〔 *${fancy(category.title.toUpperCase())}* 〕`, ...category.commands, '╰──────────────'].join('\n')
+    ? [`╭──〔 *${fancy(category.title.toUpperCase())}* 〕`, ...category.commands.slice(start, start + pageSize), '╰──────────────'].join('\n')
     : `Par Son Altesse\n\n${count} commandes · ${categories.length} catégories\nCopie une commande ci-dessous pour ouvrir sa catégorie.`
-  const fallback = categories.map(({ title }, index) => `${title} — .menu ${index + 1}`).join('\n')
+  const fallback = category ? [
+    totalPages > 1 && `Page ${current}/${totalPages}`,
+    current > 1 && `Page précédente · .menu ${category.id} ${current - 1}`,
+    current < totalPages && `Page suivante · .menu ${category.id} ${current + 1}`,
+    'Retour au menu · .menu',
+  ].filter(Boolean).join('\n') : categories.map(({ title }, index) => `${title} — .menu ${index + 1}`).join('\n')
   return {
     video: category ? undefined : MENU_VIDEO,
     channel: CHANNEL,
     text: royalFrame('DOMMA', body),
-    fallback: category ? 'Retour au menu · .menu' : fallback,
+    fallback,
     categories: categories.map(({ id, title, commands }) => ({
       id: `domma-menu:${id}`,
       title,

@@ -5,6 +5,8 @@ const { createStaticSticker } = require('./doma-sticker.cjs')
 const { mixEmojis, telegramSticker, youtubeMedia, searchYouTube, convertAudio, convertMedia } = require('./doma-media.cjs')
 const information = require('./doma-information.cjs')
 const games = require('./doma-games.cjs')
+const { characters, series, showCharacter, showAnime } = require('./doma-anime.cjs')
+const { styles, makeTextArtwork, makeQr } = require('./doma-design.cjs')
 
 const audioEffects = {
   bass: 'bass=g=9',
@@ -67,6 +69,16 @@ const commands = [
   { section: 'Images', name: 'togif', run: (_, context) => transformVideo(context, { gif: true }) },
   { section: 'Images', name: 'tomp4', run: (_, context) => transformVideo(context) },
   { section: 'Images', name: 'volvideo', usage: 'pourcentage de 0 à 200', run: (args, context) => transformVideo(context, { filter: volumeFilter(args) }) },
+  { section: 'Images', name: 'toqr', usage: 'texte ou lien', run: async (args, { send }) => send({ image: await makeQr(args), mimetype: 'image/png', caption: 'Ton code QR est prêt.' }) },
+  { section: 'Stickers', name: 'ttp', usage: 'texte court', run: (args, { sticker }) => sticker(makeTextArtwork(args, 'royaltext', true)) },
+  { section: 'Anime', name: 'anime', usage: 'titre', run: showAnime },
+  { section: 'Anime', name: 'animewall', aliases: ['animewlp'], usage: 'titre', run: (args, context) => showAnime(args, context, true) },
+  { section: 'Anime', name: 'animeavatar', usage: 'nom complet du personnage', run: (args, context) => showCharacter(requireText(args, 'animeavatar'), context) },
+  ...Object.entries(series).map(([name, title]) => ({ section: 'Anime', name, run: (_, context) => showAnime(title, context) })),
+  ...Object.entries(characters).map(([name, character]) => ({ section: 'Anime', name, run: (_, context) => showCharacter(character, context) })),
+  ...Object.keys(styles).map(name => ({ section: 'Images', name, usage: 'texte court', run: (args, { send }) => send({
+    image: makeTextArtwork(args, name), mimetype: 'image/png', caption: 'Ton visuel est prêt.',
+  }) })),
 ]
 
 const byName = new Map(commands.flatMap(command => [command.name, ...(command.aliases ?? [])].map(name => [name, command])))
