@@ -83,7 +83,8 @@ async function youtubeMedia(args, audio) {
       '--ignore-config', '--js-runtimes', 'node', '--no-playlist', '--no-warnings', '--no-progress',
       '--socket-timeout', '15', '--retries', '1', '--max-filesize', String(MAX_UPLOAD_BYTES),
       '-o', join(directory, 'media.%(ext)s'),
-      ...(audio ? ['-f', 'ba/b', '-x', '--audio-format', 'mp3', '--audio-quality', '128K']
+      ...(audio ? ['-f', 'ba[audio_channels<=2][filesize_approx<=20M]/ba[audio_channels<=?2][filesize_approx=none]/b[filesize_approx<=?20M]',
+        '-x', '--audio-format', 'mp3', '--audio-quality', '128K']
         : ['-f', YOUTUBE_VIDEO_FORMAT, '--merge-output-format', 'mp4']),
       '--', url,
     ], {
