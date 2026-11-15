@@ -130,19 +130,25 @@ async function searchYouTube(query) {
 }
 
 async function convertAudio(input, effect, voiceNote) {
-  const directory = await mkdtemp(join(tmpdir(), 'doma-audio-'))
+  return convertMedia(input, voiceNote ? 'ogg' : 'mp3', [
+    '-map', '0:a:0',
+    ...(effect ? ['-af', effect] : []),
+    ...(voiceNote ? ['-c:a', 'libopus', '-ar', '48000', '-ac', '1'] : ['-c:a', 'libmp3lame', '-b:a', '128k']),
+  ])
+}
+
+async function convertMedia(input, extension, args) {
+  const directory = await mkdtemp(join(tmpdir(), 'doma-media-'))
   try {
     const inputPath = join(directory, 'input')
-    const outputPath = join(directory, voiceNote ? 'audio.ogg' : 'audio.mp3')
+    const outputPath = join(directory, `media.${extension}`)
     await writeFile(inputPath, input)
     await run('ffmpeg', [
-      '-nostdin', '-hide_banner', '-loglevel', 'error', '-i', inputPath, '-map', '0:a:0',
-      ...(effect ? ['-af', effect] : []),
-      ...(voiceNote ? ['-c:a', 'libopus', '-ar', '48000', '-ac', '1'] : ['-c:a', 'libmp3lame', '-b:a', '128k']),
+      '-nostdin', '-hide_banner', '-loglevel', 'error', '-i', inputPath, ...args,
       '-fs', String(MAX_UPLOAD_BYTES), outputPath,
     ], { timeout: 30000, maxBuffer: 64 * 1024 })
     const { size } = await stat(outputPath)
-    if (!size || size >= MAX_UPLOAD_BYTES) throw new MemeInputError('La piste audio produite dépasse la taille autorisée ou est vide.')
+    if (!size || size >= MAX_UPLOAD_BYTES) throw new MemeInputError('Le fichier produit est vide ou dépasse 20 Mo.')
     return await readFile(outputPath)
   } catch (error) {
     if (error.code === 'ENOENT') throw new MemeInputError('Installe FFmpeg sur le serveur pour utiliser cette commande.')
@@ -152,4 +158,4 @@ async function convertAudio(input, effect, voiceNote) {
   }
 }
 
-module.exports = { mixEmojis, telegramSticker, youtubeMedia, searchYouTube, convertAudio }
+module.exports = { mixEmojis, telegramSticker, youtubeMedia, searchYouTube, convertAudio, convertMedia }

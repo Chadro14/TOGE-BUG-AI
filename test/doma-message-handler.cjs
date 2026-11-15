@@ -2,7 +2,9 @@
 
 const { menu, fancy, formatReply, createMeme, uploadMedia, MemeInputError, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES } = require('../doma-commandes.cjs')
 const { createStaticSticker } = require('./doma-sticker.cjs')
-const { mixEmojis, telegramSticker, youtubeMedia, searchYouTube, convertAudio } = require('./doma-media.cjs')
+const { mixEmojis, telegramSticker, youtubeMedia, searchYouTube, convertAudio, convertMedia } = require('./doma-media.cjs')
+const information = require('./doma-information.cjs')
+const games = require('./doma-games.cjs')
 
 const audioEffects = {
   bass: 'bass=g=9',
@@ -16,6 +18,14 @@ const audioEffects = {
   slow: 'atempo=0.75',
   smooth: 'lowpass=f=4500',
   squirrel: 'aresample=48000,asetrate=72000,aresample=48000',
+}
+
+const informationUsage = { weather: 'ville', translate: 'fr>en texte', itunes: 'titre ou artiste', define: 'mot anglais' }
+const gameUsage = { math: '12 * 7', suit: 'pierre, papier ou ciseaux', pick: 'choix A|choix B', tictactoe: 'start ou numéro de case' }
+const imageEffects = {
+  blur: 'boxblur=8:2',
+  invert: 'negate',
+  pixelate: 'scale=48:48:force_original_aspect_ratio=decrease,scale=iw*8:ih*8:flags=neighbor',
 }
 
 const commands = [
@@ -32,6 +42,7 @@ const commands = [
   { section: 'YouTube', name: 'ytaudio', aliases: ['ytmp3'], usage: 'lien YouTube', run: sendYouTubeAudio },
   { section: 'YouTube', name: 'ytvideo', aliases: ['ytmp4'], usage: 'lien YouTube', run: sendYouTubeVideo },
   { section: 'YouTube', name: 'ytsearch', usage: 'titre à chercher', run: showYouTubeSearch },
+  { section: 'YouTube', name: 'play', usage: 'titre à écouter', run: playYouTube },
   { section: 'Outils', name: 'tourl', run: shareMedia },
   { section: 'Texte', name: 'styletext', usage: 'texte', run: (args, { reply }) => reply(fancy(requireText(args, 'styletext'))) },
   { section: 'Texte', name: 'fliptext', usage: 'texte', run: flipText },
@@ -39,9 +50,23 @@ const commands = [
   { section: 'Texte', name: 'dbinary', usage: 'groupes de 8 bits', run: decodeBinary },
   { section: 'Audio', name: 'toaudio', aliases: ['tomp3'], run: (_, context) => transformAudio(context) },
   { section: 'Audio', name: 'tovn', run: (_, context) => transformAudio(context, undefined, true) },
+  { section: 'Audio', name: 'volaudio', usage: 'pourcentage de 0 à 200', run: (args, context) => transformAudio(context, volumeFilter(args)) },
   ...Object.entries(audioEffects).map(([name, filter]) => ({
     section: 'Audio', name, run: (_, context) => transformAudio(context, filter),
   })),
+  ...Object.entries(information).map(([name, handler]) => ({
+    section: 'Infos', name, usage: informationUsage[name], run: async (args, { request, reply }) => reply(await handler(args, request)),
+  })),
+  ...Object.entries(games).map(([name, handler]) => ({
+    section: 'Jeux', name, usage: gameUsage[name], run: (args, { message, reply }) => reply(handler(args, message.chat)),
+  })),
+  ...Object.entries(imageEffects).map(([name, filter]) => ({
+    section: 'Images', name, run: (_, context) => transformImage(context, filter),
+  })),
+  { section: 'Images', name: 'toimg', run: (_, context) => transformImage(context) },
+  { section: 'Images', name: 'togif', run: (_, context) => transformVideo(context, { gif: true }) },
+  { section: 'Images', name: 'tomp4', run: (_, context) => transformVideo(context) },
+  { section: 'Images', name: 'volvideo', usage: 'pourcentage de 0 à 200', run: (args, context) => transformVideo(context, { filter: volumeFilter(args) }) },
 ]
 
 const byName = new Map(commands.flatMap(command => [command.name, ...(command.aliases ?? [])].map(name => [name, command])))
@@ -92,6 +117,19 @@ async function showYouTubeSearch(args, { reply }) {
   await reply(results.length ? results.map(({ title, url }) => `${title}\n${url}`).join('\n\n') : 'Aucun résultat trouvé.')
 }
 
+async function playYouTube(args, { send }) {
+  const [result] = await searchYouTube(requireText(args, 'play'))
+  if (!result) throw new MemeInputError('Aucun morceau trouvé sur YouTube.')
+  await send({ audio: await youtubeMedia(result.url, true), mimetype: 'audio/mpeg' }, result.title)
+}
+
+function volumeFilter(args) {
+  if (!/^\d{1,3}$/.test(args) || Number(args) > 200) {
+    throw new MemeInputError('Indique un volume entre 0 et 200. La valeur 100 garde le volume original.')
+  }
+  return `volume=${Number(args) / 100}`
+}
+
 async function transformAudio({ message, downloadMedia, send }, filter, voiceNote = false) {
   const source = message.mtype ? message : message.quoted
   if (!['audioMessage', 'videoMessage'].includes(source?.mtype)) {
@@ -100,6 +138,32 @@ async function transformAudio({ message, downloadMedia, send }, filter, voiceNot
   const input = await downloadMedia(source, MAX_UPLOAD_BYTES)
   const audio = await convertAudio(input, filter, voiceNote)
   await send({ audio, mimetype: voiceNote ? 'audio/ogg; codecs=opus' : 'audio/mpeg', ptt: voiceNote })
+}
+
+async function transformImage({ message, downloadMedia, send }, filter) {
+  const source = message.mtype ? message : message.quoted
+  if (!['imageMessage', 'stickerMessage'].includes(source?.mtype)) {
+    throw new MemeInputError('Envoie ou cite une image ou un sticker.')
+  }
+  const input = await downloadMedia(source, MAX_IMAGE_BYTES)
+  const filters = ['scale=w=min(iw\\,1280):h=min(ih\\,1280):force_original_aspect_ratio=decrease', filter].filter(Boolean)
+  const image = await convertMedia(input, 'png', ['-map', '0:v:0', '-vf', filters.join(','), '-frames:v', '1', '-threads', '1'])
+  await send({ image, mimetype: 'image/png', caption: 'Ton image est prête.' })
+}
+
+async function transformVideo({ message, downloadMedia, send }, { gif = false, filter } = {}) {
+  const source = message.mtype ? message : message.quoted
+  if (!['videoMessage', 'documentMessage'].includes(source?.mtype) || !/^video\//.test(source.msg.mimetype ?? '')) {
+    throw new MemeInputError('Envoie ou cite une vidéo pour utiliser cette commande.')
+  }
+  const input = await downloadMedia(source, MAX_UPLOAD_BYTES)
+  const video = await convertMedia(input, 'mp4', [
+    '-map', '0:v:0', ...(gif ? ['-an', '-t', '10'] : ['-map', '0:a:0?']),
+    ...(filter ? ['-af', filter] : []),
+    '-vf', 'scale=w=min(iw\\,720):h=min(ih\\,720):force_original_aspect_ratio=decrease:force_divisible_by=2',
+    '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart',
+  ])
+  await send({ video, mimetype: 'video/mp4', gifPlayback: gif, caption: gif ? 'Ton GIF est prêt.' : 'Ta vidéo est prête.' })
 }
 
 async function showUptime(_, { reply }) {
@@ -156,11 +220,11 @@ async function sendYouTubeVideo(args, { send }) {
 async function handleDomaMessage(message, { downloadMedia, sendMenu, send, request = fetch, receivedAt = performance.now() }, parsed = parseDomaCommand(message.body)) {
   if (!parsed) return false
   const { command, args } = parsed
-  const sendContent = async content => {
+  const sendContent = async (content, detail) => {
     if (content.caption) return send(message.chat, { ...content, caption: formatReply(command.name, content.caption) })
     await send(message.chat, content)
     const label = content.sticker ? 'Ton sticker est prêt.' : 'Ton audio est prêt.'
-    await send(message.chat, { text: formatReply(command.name, label) }).catch(() => {})
+    await send(message.chat, { text: formatReply(command.name, detail ? `${label}\n${detail}` : label) }).catch(() => {})
   }
   const reply = (text, failed = false) => send(message.chat, { text: formatReply(command.name, text, failed) })
   const sticker = async image => sendContent({ sticker: await createStaticSticker(image) })
