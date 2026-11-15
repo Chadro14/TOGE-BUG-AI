@@ -10,18 +10,32 @@ const MEDIA_TYPES = {
   stickerMessage: 'sticker',
 }
 
-function getMedia(content) {
+export function getMedia(content) {
   const mtype = Object.keys(MEDIA_TYPES).find(type => content?.[type])
   return mtype && { mtype, msg: content[mtype] }
 }
 
-function containsViewOnce(content) {
+export function containsViewOnce(content) {
   for (let depth = 0; content && depth < 6; depth++) {
     if (content.viewOnceMessage || content.viewOnceMessageV2 || content.viewOnceMessageV2Extension || getMedia(content)?.msg.viewOnce) return true
     content = (content.ephemeralMessage || content.documentWithCaptionMessage || content.editedMessage
       || content.associatedChildMessage || content.groupStatusMessage || content.groupStatusMessageV2)?.message
   }
   return Boolean(content)
+}
+
+export async function downloadCommandMedia(downloadContentFromMessage, { mtype, msg }, maxBytes) {
+  const tooLarge = () => new MemeInputError(`Le fichier dépasse ${maxBytes / (1024 * 1024)} Mo.`)
+  if (Number(msg.fileLength) > maxBytes) throw tooLarge()
+  const stream = await downloadContentFromMessage(msg, MEDIA_TYPES[mtype])
+  const chunks = []
+  let bytes = 0
+  for await (const chunk of stream) {
+    bytes += chunk.length
+    if (bytes > maxBytes) throw tooLarge()
+    chunks.push(chunk)
+  }
+  return Buffer.concat(chunks, bytes)
 }
 
 function getMenuSelection(content) {
@@ -47,20 +61,6 @@ export function bindCommands(socket, baileys, dir, logMenu = () => {}) {
   const connectedSince = Math.floor(Date.now() / 1000)
   const handledCommands = new Set()
   const toolsReady = accountTools(socket, baileys, dir, logMenu)
-
-  async function downloadMedia({ mtype, msg }, maxBytes) {
-    const tooLarge = () => new MemeInputError(`Le fichier dépasse ${maxBytes / (1024 * 1024)} Mo.`)
-    if (Number(msg.fileLength) > maxBytes) throw tooLarge()
-    const stream = await downloadContentFromMessage(msg, MEDIA_TYPES[mtype])
-    const chunks = []
-    let bytes = 0
-    for await (const chunk of stream) {
-      bytes += chunk.length
-      if (bytes > maxBytes) throw tooLarge()
-      chunks.push(chunk)
-    }
-    return Buffer.concat(chunks, bytes)
-  }
 
   async function sendMenu(jid, { text, video, channel }) {
     const contextInfo = { forwardingScore: 1, isForwarded: true }
@@ -175,7 +175,7 @@ export function bindCommands(socket, baileys, dir, logMenu = () => {}) {
       const quoted = !canUseQuote || containsViewOnce(context?.quotedMessage) ? undefined : getMedia(normalizeMessageContent(context?.quotedMessage))
       try {
         await handleDomaMessage({ chat: key.remoteJid, ...media, quoted }, {
-          downloadMedia,
+          downloadMedia: (source, max) => downloadCommandMedia(downloadContentFromMessage, source, max),
           sendMenu,
           send: (jid, reply) => socket.sendMessage(jid, reply),
           onCommandError: name => logMenu(`Échec du traitement de .${name}.`),

@@ -70,7 +70,8 @@ export async function runSiteWorker({ id, label, key, bind }) {
     socket.ev.on('creds.update', () => {
       session.saving = session.saving.then(saveCreds).catch(() => console.error('Bot Connect : sauvegarde de session indisponible.'))
     })
-    const onMessages = bind(socket, baileys, dir, message => console.log(`Bot Connect : ${message}`))
+    const onMessages = bind(socket, baileys, dir, message => console.log(`Bot Connect : ${message}`), undefined,
+      () => isCurrent() && session.active)
     socket.ev.on('messages.upsert', event => { if (isCurrent() && session.active) void onMessages(event).catch(() => {}) })
     const pairing = createPairingHandler(socket, session.phone, {
       isCurrent,
