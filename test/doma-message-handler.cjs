@@ -8,6 +8,7 @@ const games = require('./doma-games.cjs')
 const { characters, series, showCharacter, showAnime } = require('./doma-anime.cjs')
 const { styles, makeTextArtwork, makeQr } = require('./doma-design.cjs')
 const { reactions, reactionAliases, photoTopics, showReaction, showPhoto } = require('./doma-collections.cjs')
+const { searchSpotify, openSpotify } = require('./doma-spotify.cjs')
 
 const audioEffects = {
   bass: 'bass=g=9',
@@ -104,6 +105,8 @@ const commands = [
   }).map(([name, usage]) => ({
     section: 'Groupes', name, usage, groupOnly: true, run: async (args, { whatsapp, reply }) => reply(await whatsapp(name, args)),
   })),
+  { section: 'Spotify', name: 'spotify', aliases: ['spotifysearch'], usage: 'titre ou artiste', run: async (args, { reply, request }) => reply(await searchSpotify(args, request)) },
+  { section: 'Spotify', name: 'spotifyplay', usage: 'lien Spotify', run: async (args, { reply, request }) => reply(await openSpotify(args, request)) },
 ]
 
 const byName = new Map(commands.flatMap(command => [command.name, ...(command.aliases ?? [])].map(name => [name, command])))
