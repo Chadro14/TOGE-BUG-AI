@@ -14,6 +14,20 @@ function getMedia(content) {
   return mtype && { mtype, msg: content[mtype] }
 }
 
+function getMenuSelection(content) {
+  const response = content?.interactiveResponseMessage?.nativeFlowResponseMessage
+  let id = content?.listResponseMessage?.singleSelectReply?.selectedRowId
+  if (response?.name === 'single_select') {
+    try {
+      id = JSON.parse(response.paramsJson ?? '{}')?.id
+    } catch {
+      return undefined
+    }
+  }
+  const selection = typeof id === 'string' && /^domma-menu:([a-z]+)$/.exec(id)
+  return selection ? `.menu ${selection[1]}` : undefined
+}
+
 export function bindCommands(socket, baileys, logMenu = () => {}) {
   const {
     downloadContentFromMessage, jidNormalizedUser, normalizeMessageContent, proto,
@@ -36,24 +50,29 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
     return Buffer.concat(chunks, bytes)
   }
 
-  async function sendMenu(jid, { text, video, channel }) {
-    const media = { video: { url: video }, mimetype: 'video/mp4' }
-    const caption = `${text}\n\nVoir la chaîne\n${channel}`
+  async function sendMenu(jid, { text, video, channel, fallback, categories }) {
+    const videoOptions = { options: { timeout: 15000 }, mediaUploadTimeoutMs: 20000 }
+    const media = video && { video: { url: video }, mimetype: 'video/mp4' }
+    const channelText = `Voir la chaîne\n${channel}`
+    const caption = `${text}\n\n${fallback}\n\n${channelText}`
     try {
-      const { videoMessage } = await prepareWAMessageMedia(media, {
-        upload: socket.waUploadToServer,
-        options: { timeout: 15000 },
-        mediaUploadTimeoutMs: 20000,
-      })
+      let header
+      if (media) {
+        const { videoMessage } = await prepareWAMessageMedia(media, { ...videoOptions, upload: socket.waUploadToServer })
+        header = { hasMediaAttachment: true, videoMessage }
+      }
       const message = proto.Message.fromObject({
         viewOnceMessage: {
           message: {
             messageContextInfo: { deviceListMetadata: {}, deviceListMetadataVersion: 2 },
             interactiveMessage: {
-              header: { hasMediaAttachment: true, videoMessage },
+              header,
               body: { text: caption },
               nativeFlowMessage: {
                 buttons: [{
+                  name: 'single_select',
+                  buttonParamsJson: JSON.stringify({ title: 'Choisir une catégorie', sections: [{ title: 'Commandes Domma', rows: categories }] }),
+                }, {
                   name: 'cta_url',
                   buttonParamsJson: JSON.stringify({ display_text: 'Voir la chaîne', url: channel, merchant_url: channel }),
                 }],
@@ -77,10 +96,10 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
         }],
       })
     } catch {
-      logMenu('Menu interactif indisponible, envoi du menu vidéo standard.')
       try {
-        await socket.sendMessage(jid, { ...media, caption }, { options: { timeout: 15000 }, mediaUploadTimeoutMs: 20000 })
+        await socket.sendMessage(jid, media ? { ...media, caption } : { text: caption }, videoOptions)
       } catch {
+        if (!media) throw new Error('Impossible d’envoyer le menu texte.')
         logMenu('Vidéo du menu indisponible, envoi du menu texte.')
         await socket.sendMessage(jid, { text: caption })
       }
@@ -105,7 +124,7 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
 
       const content = normalizeMessageContent(entry.message)
       const media = getMedia(content)
-      const body = content?.conversation ?? content?.extendedTextMessage?.text ?? media?.msg.caption
+      const body = getMenuSelection(content) ?? content?.conversation ?? content?.extendedTextMessage?.text ?? media?.msg.caption
       const parsed = parseDomaCommand(body)
       if (!parsed || (type === 'append' && (!key.id || !recent))) continue
       const isMenu = parsed.command.name === 'menu'

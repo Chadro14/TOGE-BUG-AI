@@ -1,7 +1,7 @@
 'use strict'
 
 const { execFile } = require('node:child_process')
-const { mkdtemp, readFile, readdir, rm, stat } = require('node:fs/promises')
+const { mkdtemp, readFile, readdir, rm, stat, writeFile } = require('node:fs/promises')
 const { tmpdir } = require('node:os')
 const { delimiter, join } = require('node:path')
 const { promisify } = require('node:util')
@@ -9,6 +9,10 @@ const { MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES, MemeInputError } = require('../doma-c
 
 const run = promisify(execFile)
 const TELEGRAM = 'https://api.telegram.org'
+const YT_DLP_ENV = {
+  ...process.env,
+  PATH: [join(__dirname, '..', 'bin'), process.env.PATH].filter(Boolean).join(delimiter),
+}
 const YOUTUBE_AUDIO_FORMAT = [
   'ba[ext=m4a][acodec^=mp4a][audio_channels<=2][filesize_approx<=20M]',
   'ba[audio_channels<=2][filesize_approx<=20M]',
@@ -93,7 +97,7 @@ async function youtubeMedia(args, audio) {
         : ['-f', YOUTUBE_VIDEO_FORMAT, '--merge-output-format', 'mp4']),
       '--', url,
     ], {
-      env: { ...process.env, PATH: [join(__dirname, '..', 'bin'), process.env.PATH].filter(Boolean).join(delimiter) },
+      env: YT_DLP_ENV,
       timeout: 90000,
       maxBuffer: 256 * 1024,
     })
@@ -110,4 +114,42 @@ async function youtubeMedia(args, audio) {
   }
 }
 
-module.exports = { mixEmojis, telegramSticker, youtubeMedia }
+async function searchYouTube(query) {
+  let output
+  try {
+    ({ stdout: output } = await run('yt-dlp', [
+      '--ignore-config', '--js-runtimes', 'node', '--flat-playlist', '--no-warnings',
+      '--socket-timeout', '10', '--retries', '1', '--dump-single-json', '--', `ytsearch5:${query}`,
+    ], { env: YT_DLP_ENV, timeout: 30000, maxBuffer: 512 * 1024 }))
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new MemeInputError('Installe yt-dlp sur le serveur pour activer cette commande.')
+    throw error
+  }
+  return (JSON.parse(output).entries ?? []).filter(entry => /^[\w-]{11}$/.test(entry?.id ?? ''))
+    .map(entry => ({ title: entry.title || 'Vidéo YouTube', url: `https://www.youtube.com/watch?v=${entry.id}` }))
+}
+
+async function convertAudio(input, effect, voiceNote) {
+  const directory = await mkdtemp(join(tmpdir(), 'doma-audio-'))
+  try {
+    const inputPath = join(directory, 'input')
+    const outputPath = join(directory, voiceNote ? 'audio.ogg' : 'audio.mp3')
+    await writeFile(inputPath, input)
+    await run('ffmpeg', [
+      '-nostdin', '-hide_banner', '-loglevel', 'error', '-i', inputPath, '-map', '0:a:0',
+      ...(effect ? ['-af', effect] : []),
+      ...(voiceNote ? ['-c:a', 'libopus', '-ar', '48000', '-ac', '1'] : ['-c:a', 'libmp3lame', '-b:a', '128k']),
+      '-fs', String(MAX_UPLOAD_BYTES), outputPath,
+    ], { timeout: 30000, maxBuffer: 64 * 1024 })
+    const { size } = await stat(outputPath)
+    if (!size || size >= MAX_UPLOAD_BYTES) throw new MemeInputError('La piste audio produite dépasse la taille autorisée ou est vide.')
+    return await readFile(outputPath)
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new MemeInputError('Installe FFmpeg sur le serveur pour utiliser cette commande.')
+    throw error
+  } finally {
+    await rm(directory, { force: true, recursive: true })
+  }
+}
+
+module.exports = { mixEmojis, telegramSticker, youtubeMedia, searchYouTube, convertAudio }

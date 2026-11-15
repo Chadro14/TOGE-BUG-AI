@@ -26,20 +26,39 @@ function fancy(text) {
   })
 }
 
-function menu(commands) {
+function royalFrame(title, text) {
+  return [`╔════〔 *${fancy(title)}* 〕════╗`, '', text, '', '╚══════════════════╝'].join('\n')
+}
+
+function formatReply(name, text, failed = false) {
+  const title = failed ? 'Commande indisponible' : name.toUpperCase()
+  return royalFrame(title, text)
+}
+
+function menu(commands, selected) {
   const sections = new Map()
   for (const { section, name, usage = '' } of commands) {
-    if (!sections.has(section)) sections.set(section, [])
-    sections.get(section).push(`┆❏ .${fancy(name)}${usage ? ` ${usage}` : ''}`)
+    const id = section.toLowerCase()
+    if (!sections.has(id)) sections.set(id, { id, title: section, commands: [] })
+    sections.get(id).commands.push(`│ *· .${fancy(name)}*${usage ? ` ${usage}` : ''}`)
   }
+  const categories = [...sections.values()]
+  const category = sections.get(selected)
+  const count = commands.length
+  const body = category
+    ? [`╭──〔 *${fancy(category.title.toUpperCase())}* 〕`, ...category.commands, '╰──────────────'].join('\n')
+    : `Par Son Altesse\n\n${count} commandes · ${categories.length} catégories\nChoisis une catégorie pour afficher ses commandes.`
+  const fallback = categories.map(({ id, title }) => `${title} — .menu ${id}`).join('\n')
   return {
-    video: MENU_VIDEO,
+    video: category ? undefined : MENU_VIDEO,
     channel: CHANNEL,
-    text: [
-      `*${fancy('domma')}*`,
-      `Par ${fancy('Son Altesse')}`,
-      ...Array.from(sections, ([name, rows]) => ['', `╭──『 ${fancy(name)} 』`, ...rows, '╰──────────────']).flat(),
-    ].join('\n'),
+    text: royalFrame('DOMMA', body),
+    fallback: category ? 'Retour au menu · .menu' : fallback,
+    categories: categories.map(({ id, title, commands }) => ({
+      id: `domma-menu:${id}`,
+      title,
+      description: `${commands.length} commande${commands.length === 1 ? '' : 's'}`,
+    })),
   }
 }
 
@@ -101,4 +120,4 @@ async function createMeme({ image, mime, caption, request = fetch }) {
   return Buffer.from(await result.arrayBuffer())
 }
 
-module.exports = { menu, createMeme, uploadMedia, MemeInputError, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES }
+module.exports = { menu, fancy, formatReply, createMeme, uploadMedia, MemeInputError, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES }
