@@ -17,11 +17,12 @@ function getMedia(content) {
 function getMenuSelection(content) {
   const response = content?.interactiveResponseMessage?.nativeFlowResponseMessage
   let id = content?.listResponseMessage?.singleSelectReply?.selectedRowId
-  if (response?.name === 'single_select') {
+  if (response?.paramsJson) {
     try {
-      id = JSON.parse(response.paramsJson ?? '{}')?.id
+      const params = JSON.parse(response.paramsJson)
+      id ??= params?.id ?? params?.selected_row_id ?? params?.selectedRowId
     } catch {
-      return undefined
+      // A malformed native-flow reply can still contain a classic list reply.
     }
   }
   const selection = typeof id === 'string' && /^domma-menu:([a-z]+)$/.exec(id)
@@ -54,21 +55,20 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
     const videoOptions = { options: { timeout: 15000 }, mediaUploadTimeoutMs: 20000 }
     const media = video && { video: { url: video }, mimetype: 'video/mp4' }
     const channelText = `Voir la chaîne\n${channel}`
-    const caption = `${text}\n\n${fallback}\n\n${channelText}`
+    await socket.sendMessage(jid, { text: `${text}\n\n${fallback}\n\n${channelText}`, linkPreview: undefined })
+    if (!media) return
+
     try {
-      let header
-      if (media) {
-        const { videoMessage } = await prepareWAMessageMedia(media, { ...videoOptions, upload: socket.waUploadToServer })
-        header = { hasMediaAttachment: true, videoMessage }
-      }
+      const { videoMessage } = await prepareWAMessageMedia(media, { ...videoOptions, upload: socket.waUploadToServer })
       const message = proto.Message.fromObject({
         viewOnceMessage: {
           message: {
             messageContextInfo: { deviceListMetadata: {}, deviceListMetadataVersion: 2 },
             interactiveMessage: {
-              header,
-              body: { text: caption },
+              header: { hasMediaAttachment: true, videoMessage },
+              body: { text: 'Menu de 𝕯𝕺𝕸𝕸𝕬' },
               nativeFlowMessage: {
+                messageVersion: 1,
                 buttons: [{
                   name: 'single_select',
                   buttonParamsJson: JSON.stringify({ title: 'Choisir une catégorie', sections: [{ title: 'Commandes Domma', rows: categories }] }),
@@ -88,31 +88,30 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
       await socket.relayMessage(jid, outgoing.message, {
         messageId: outgoing.key.id,
         additionalNodes: [{
-          tag: 'biz', attrs: {}, content: [{
-            tag: 'interactive', attrs: { type: 'native_flow', v: '1' }, content: [{
-              tag: 'native_flow', attrs: { name: 'mixed', v: '9' },
-            }],
-          }],
+          tag: 'biz', attrs: {}, content: [
+            { tag: 'interactive', attrs: { type: 'native_flow', v: '1' }, content: [
+              { tag: 'native_flow', attrs: { name: 'mixed', v: '9' } },
+            ] },
+            { tag: 'quality_control', attrs: { source_type: 'third_party' } },
+          ],
         }],
       })
     } catch {
       try {
-        await socket.sendMessage(jid, media ? { ...media, caption } : { text: caption }, videoOptions)
+        await socket.sendMessage(jid, { ...media, caption: channelText }, videoOptions)
       } catch {
-        if (!media) throw new Error('Impossible d’envoyer le menu texte.')
-        logMenu('Vidéo du menu indisponible, envoi du menu texte.')
-        await socket.sendMessage(jid, { text: caption })
+        logMenu('Vidéo du menu indisponible. Le menu texte a été envoyé.')
       }
     }
-    logMenu('Réponse .menu envoyée.')
   }
 
   return async function onMessages({ type, messages, requestId }) {
-    if (requestId || !socket.user || (type !== 'notify' && type !== 'append')) return
+    if (!socket.user || (type !== 'notify' && type !== 'append')) return
     const ownJids = new Set([socket.user.id, socket.user.lid].filter(Boolean).map(jidNormalizedUser))
     for (const entry of messages) {
       const { key } = entry
-      const ownChat = key.remoteJid && ownJids.has(jidNormalizedUser(key.remoteJid))
+      const ownChat = [key.remoteJid, key.remoteJidAlt].some(jid => jid && ownJids.has(jidNormalizedUser(jid)))
+      if (!key.remoteJid) continue
       const timestamp = Number(entry.messageTimestamp)
       const recent = Number.isFinite(timestamp) && timestamp >= connectedSince
       if (!entry.message && entry.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT) {
@@ -124,9 +123,10 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
 
       const content = normalizeMessageContent(entry.message)
       const media = getMedia(content)
-      const body = getMenuSelection(content) ?? content?.conversation ?? content?.extendedTextMessage?.text ?? media?.msg.caption
+      const selection = getMenuSelection(content)
+      const body = selection ?? content?.conversation ?? content?.extendedTextMessage?.text ?? media?.msg.caption
       const parsed = parseDomaCommand(body)
-      if (!parsed || (type === 'append' && (!key.id || !recent))) continue
+      if (!parsed || ((type === 'append' || requestId) && (!key.id || !recent))) continue
       const isMenu = parsed.command.name === 'menu'
       if (!key.fromMe || !ownChat) {
         if (isMenu && key.fromMe) logMenu('Commande .menu ignorée : conversation personnelle non reconnue.')
@@ -138,7 +138,7 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
         if (handledCommands.size >= 128) handledCommands.delete(handledCommands.values().next().value)
         handledCommands.add(key.id)
       }
-      if (isMenu) logMenu(`Commande .menu reçue (${type}).`)
+      if (isMenu || parsed.command.name === 'ping') logMenu(`Commande .${parsed.command.name} reçue (${selection ? 'sélecteur' : type}).`)
 
       const context = content?.extendedTextMessage?.contextInfo ?? media?.msg.contextInfo
       const quoted = getMedia(normalizeMessageContent(context?.quotedMessage))
@@ -148,6 +148,7 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
           sendMenu,
           send: (jid, reply) => socket.sendMessage(jid, reply),
         }, parsed)
+        if (isMenu || parsed.command.name === 'ping') logMenu(`Réponse .${parsed.command.name} envoyée.`)
       } catch {
         if (key.id) handledCommands.delete(key.id)
         logMenu(`Échec de la réponse .${parsed.command.name}.`)

@@ -1,6 +1,6 @@
 'use strict'
 
-const CHANNEL = 'https://whatsapp.com/channel/0029Vb6aMu46RGJOcGGe1H1O'
+const CHANNEL = 'https://www.whatsapp.com/channel/0029Vb6aMu46RGJOcGGe1H1O'
 const MENU_VIDEO = 'https://files.catbox.moe/54auhj.mp4'
 const MEMEGEN = 'https://api.memegen.link/images/custom'
 const UGUU = 'https://uguu.se/upload.php'
@@ -43,12 +43,12 @@ function menu(commands, selected) {
     sections.get(id).commands.push(`│ *· .${fancy(name)}*${usage ? ` ${usage}` : ''}`)
   }
   const categories = [...sections.values()]
-  const category = sections.get(selected)
+  const category = /^\d+$/.test(selected ?? '') ? categories[Number(selected) - 1] : sections.get(selected)
   const count = commands.length
   const body = category
     ? [`╭──〔 *${fancy(category.title.toUpperCase())}* 〕`, ...category.commands, '╰──────────────'].join('\n')
-    : `Par Son Altesse\n\n${count} commandes · ${categories.length} catégories\nChoisis une catégorie pour afficher ses commandes.`
-  const fallback = categories.map(({ id, title }) => `${title} — .menu ${id}`).join('\n')
+    : `Par Son Altesse\n\n${count} commandes · ${categories.length} catégories\nCopie une commande ci-dessous pour ouvrir sa catégorie.`
+  const fallback = categories.map(({ title }, index) => `${title} — .menu ${index + 1}`).join('\n')
   return {
     video: category ? undefined : MENU_VIDEO,
     channel: CHANNEL,
