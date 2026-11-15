@@ -40,35 +40,31 @@ function menu(commands, selected) {
   for (const { section, name, usage = '' } of commands) {
     const id = section.toLowerCase()
     if (!sections.has(id)) sections.set(id, { id, title: section, commands: [] })
-    sections.get(id).commands.push(`│ *· .${fancy(name)}*${usage ? ` ${usage}` : ''}`)
+    sections.get(id).commands.push(`│ *.${name}*${usage ? ` — ${usage}` : ''}`)
   }
   const categories = [...sections.values()]
   const [section, page = '1'] = (selected ?? '').trim().split(/\s+/)
-  const category = /^\d+$/.test(section) ? categories[Number(section) - 1] : sections.get(section)
+  const catalogue = section === 'catalogue' && { id: section, title: 'Catalogue', commands: categories.flatMap(entry => entry.commands) }
+  const category = catalogue || (/^\d+$/.test(section) ? categories[Number(section) - 1] : sections.get(section))
   const count = commands.length
   const pageSize = 16
   const totalPages = category ? Math.ceil(category.commands.length / pageSize) : 1
   const current = /^\d+$/.test(page) ? Math.min(Math.max(Number(page), 1), totalPages) : 1
   const start = (current - 1) * pageSize
   const body = category
-    ? [`╭──〔 *${fancy(category.title.toUpperCase())}* 〕`, ...category.commands.slice(start, start + pageSize), '╰──────────────'].join('\n')
-    : `Par Son Altesse\n\n${count} commandes · ${categories.length} catégories\nCopie une commande ci-dessous pour ouvrir sa catégorie.`
+    ? [`*${category.title.toUpperCase()}*`, '', ...category.commands.slice(start, start + pageSize)].join('\n')
+    : `*${count} commandes* · ${categories.length} catégories\nPar Son Altesse\n\nTape une commande ci-dessous pour ouvrir sa catégorie.`
   const fallback = category ? [
     totalPages > 1 && `Page ${current}/${totalPages}`,
     current > 1 && `Page précédente · .menu ${category.id} ${current - 1}`,
     current < totalPages && `Page suivante · .menu ${category.id} ${current + 1}`,
     'Retour au menu · .menu',
-  ].filter(Boolean).join('\n') : categories.map(({ title }, index) => `${title} — .menu ${index + 1}`).join('\n')
+  ].filter(Boolean).join('\n') : categories.map(({ title }, index) => `*.menu ${index + 1}* — ${title}`).join('\n')
   return {
     video: category ? undefined : MENU_VIDEO,
     channel: CHANNEL,
-    text: royalFrame('DOMMA', body),
+    text: `╭── *D O M M A* ──╮\n\n${body}`,
     fallback,
-    categories: categories.map(({ id, title, commands }) => ({
-      id: `domma-menu:${id}`,
-      title,
-      description: `${commands.length} commande${commands.length === 1 ? '' : 's'}`,
-    })),
   }
 }
 

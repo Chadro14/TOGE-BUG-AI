@@ -51,12 +51,19 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
     return Buffer.concat(chunks, bytes)
   }
 
-  async function sendMenu(jid, { text, video, channel, fallback, categories }) {
+  async function sendMenu(jid, { text, video, channel, fallback }) {
     const videoOptions = { options: { timeout: 15000 }, mediaUploadTimeoutMs: 20000 }
-    const media = video && { video: { url: video }, mimetype: 'video/mp4' }
     const channelText = `Voir la chaîne\n${channel}`
-    await socket.sendMessage(jid, { text: `${text}\n\n${fallback}\n\n${channelText}`, linkPreview: undefined })
-    if (!media) return
+    const ownJid = jidNormalizedUser(socket.user.id)
+    const phone = /^([1-9]\d{6,14})@s\.whatsapp\.net$/.exec(ownJid)?.[1] ?? process.env.DOMA_WHATSAPP_NUMBER?.trim()
+    const hasPhone = /^[1-9]\d{6,14}$/.test(phone ?? '')
+    const catalogue = hasPhone ? `https://wa.me/${phone}?text=${encodeURIComponent('.menu catalogue')}` : undefined
+    const catalogueText = catalogue ? `*Catalogue* · Ouvre le lien puis appuie sur Envoyer.\n${catalogue}` : '*Catalogue* · .menu catalogue'
+    await socket.sendMessage(jid, { text: [text, fallback, video && catalogueText, channelText].filter(Boolean).join('\n\n'), linkPreview: null })
+    if (!video) return
+
+    const media = { video: { url: video }, mimetype: 'video/mp4' }
+    const links = [...(catalogue ? [{ label: 'Catalogue', url: catalogue }] : []), { label: 'Voir la chaîne', url: channel }]
 
     try {
       const { videoMessage } = await prepareWAMessageMedia(media, { ...videoOptions, upload: socket.waUploadToServer })
@@ -66,16 +73,13 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
             messageContextInfo: { deviceListMetadata: {}, deviceListMetadataVersion: 2 },
             interactiveMessage: {
               header: { hasMediaAttachment: true, videoMessage },
-              body: { text: 'Menu de 𝕯𝕺𝕸𝕸𝕬' },
+              body: { text: '*DOMMA*\nCatalogue prépare la commande dans WhatsApp. Appuie sur Envoyer.' },
               nativeFlowMessage: {
                 messageVersion: 1,
-                buttons: [{
-                  name: 'single_select',
-                  buttonParamsJson: JSON.stringify({ title: 'Choisir une catégorie', sections: [{ title: 'Commandes Domma', rows: categories }] }),
-                }, {
+                buttons: links.map(({ label, url }) => ({
                   name: 'cta_url',
-                  buttonParamsJson: JSON.stringify({ display_text: 'Voir la chaîne', url: channel, merchant_url: channel }),
-                }],
+                  buttonParamsJson: JSON.stringify({ display_text: label, url, merchant_url: url }),
+                })),
               },
             },
           },
@@ -87,18 +91,21 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
       })
       await socket.relayMessage(jid, outgoing.message, {
         messageId: outgoing.key.id,
-        additionalNodes: [{
-          tag: 'biz', attrs: {}, content: [
-            { tag: 'interactive', attrs: { type: 'native_flow', v: '1' }, content: [
-              { tag: 'native_flow', attrs: { name: 'mixed', v: '9' } },
-            ] },
-            { tag: 'quality_control', attrs: { source_type: 'third_party' } },
-          ],
-        }],
+        additionalNodes: [
+          {
+            tag: 'biz', attrs: {}, content: [
+              { tag: 'interactive', attrs: { type: 'native_flow', v: '1' }, content: [
+                { tag: 'native_flow', attrs: { name: 'mixed', v: '9' } },
+              ] },
+              { tag: 'quality_control', attrs: { source_type: 'third_party' } },
+            ],
+          },
+          { tag: 'bot', attrs: { biz_bot: '1' } },
+        ],
       })
     } catch {
       try {
-        await socket.sendMessage(jid, { ...media, caption: channelText }, videoOptions)
+        await socket.sendMessage(jid, { ...media, caption: `${catalogueText}\n\n${channelText}` }, videoOptions)
       } catch {
         logMenu('Vidéo du menu indisponible. Le menu texte a été envoyé.')
       }
