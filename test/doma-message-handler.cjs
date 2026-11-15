@@ -85,6 +85,25 @@ const commands = [
   ...Object.keys(reactions).map(name => ({ section: 'Anime', name, aliases: reactionAliases[name], run: (_, context) => showReaction(name, context) })),
   { section: 'Images', name: 'wikimedia', usage: 'sujet', run: showPhoto },
   ...Object.entries(photoTopics).map(([name, query]) => ({ section: 'Images', name, run: (_, context) => showPhoto(query, context) })),
+  ...Object.entries({
+    antidelete: 'on | off',
+    autoview: 'on | off',
+    autoreact: 'on [emoji] | off',
+  }).map(([name, usage]) => ({
+    section: 'WhatsApp', name, usage, run: async (args, { whatsapp, reply }) => reply(await whatsapp(name, args)),
+  })),
+  ...Object.entries({
+    groupinfo: '',
+    groupopen: '',
+    groupclose: '',
+    groupname: 'nouveau nom',
+    groupdesc: 'nouvelle description',
+    kick: 'réponds au membre ou mentionne-le',
+    promote: 'réponds au membre ou mentionne-le',
+    demote: 'réponds au membre ou mentionne-le',
+  }).map(([name, usage]) => ({
+    section: 'Groupes', name, usage, groupOnly: true, run: async (args, { whatsapp, reply }) => reply(await whatsapp(name, args)),
+  })),
 ]
 
 const byName = new Map(commands.flatMap(command => [command.name, ...(command.aliases ?? [])].map(name => [name, command])))
@@ -235,7 +254,7 @@ async function sendYouTubeVideo(args, { send }) {
   await send({ video: await youtubeMedia(args, false), mimetype: 'video/mp4', caption: 'Ta vidéo YouTube est prête.' })
 }
 
-async function handleDomaMessage(message, { downloadMedia, sendMenu, send, request = fetch, receivedAt = performance.now() }, parsed = parseDomaCommand(message.body)) {
+async function handleDomaMessage(message, { downloadMedia, sendMenu, send, whatsapp, request = fetch, receivedAt = performance.now() }, parsed = parseDomaCommand(message.body)) {
   if (!parsed) return false
   const { command, args } = parsed
   const sendContent = async (content, detail) => {
@@ -253,7 +272,7 @@ async function handleDomaMessage(message, { downloadMedia, sendMenu, send, reque
   }
 
   try {
-    await command.run(args, { message, downloadMedia, send: sendContent, reply, sticker, request, receivedAt })
+    await command.run(args, { message, downloadMedia, send: sendContent, reply, sticker, whatsapp, request, receivedAt })
   } catch (error) {
     const fallback = command.name === 'smeme' ? 'La génération du sticker a échoué. Réessaie dans un instant.'
       : `La commande .${command.name} a échoué. Réessaie dans un instant.`

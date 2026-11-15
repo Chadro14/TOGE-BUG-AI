@@ -1,5 +1,6 @@
 import { handleDomaMessage, parseDomaCommand } from '../test/doma-message-handler.cjs'
 import { MemeInputError } from '../doma-commandes.cjs'
+import { accountTools } from './account-tools.mjs'
 
 const MEDIA_TYPES = {
   imageMessage: 'image',
@@ -12,6 +13,15 @@ const MEDIA_TYPES = {
 function getMedia(content) {
   const mtype = Object.keys(MEDIA_TYPES).find(type => content?.[type])
   return mtype && { mtype, msg: content[mtype] }
+}
+
+function containsViewOnce(content) {
+  for (let depth = 0; content && depth < 6; depth++) {
+    if (content.viewOnceMessage || content.viewOnceMessageV2 || content.viewOnceMessageV2Extension || getMedia(content)?.msg.viewOnce) return true
+    content = (content.ephemeralMessage || content.documentWithCaptionMessage || content.editedMessage
+      || content.associatedChildMessage || content.groupStatusMessage || content.groupStatusMessageV2)?.message
+  }
+  return Boolean(content)
 }
 
 function getMenuSelection(content) {
@@ -29,13 +39,14 @@ function getMenuSelection(content) {
   return selection ? `.menu ${selection[1]}` : undefined
 }
 
-export function bindCommands(socket, baileys, logMenu = () => {}) {
+export function bindCommands(socket, baileys, dir, logMenu = () => {}) {
   const {
-    downloadContentFromMessage, jidNormalizedUser, normalizeMessageContent, proto,
+    downloadContentFromMessage, isJidGroup, jidNormalizedUser, normalizeMessageContent, proto,
     prepareWAMessageMedia, generateWAMessageFromContent, generateMessageIDV2,
   } = baileys
   const connectedSince = Math.floor(Date.now() / 1000)
   const handledCommands = new Set()
+  const toolsReady = accountTools(socket, baileys, dir, logMenu)
 
   async function downloadMedia({ mtype, msg }, maxBytes) {
     const tooLarge = () => new MemeInputError(`Le fichier dépasse ${maxBytes / (1024 * 1024)} Mo.`)
@@ -112,13 +123,22 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
 
   return async function onMessages({ type, messages, requestId }) {
     if (!socket.user || (type !== 'notify' && type !== 'append')) return
+    const tools = await toolsReady
     const ownJids = new Set([socket.user.id, socket.user.lid].filter(Boolean).map(jidNormalizedUser))
     for (const entry of messages) {
       const { key } = entry
+      if (!key?.remoteJid) continue
       const ownChat = [key.remoteJid, key.remoteJidAlt].some(jid => jid && ownJids.has(jidNormalizedUser(jid)))
-      if (!key.remoteJid) continue
+      const groupChat = isJidGroup(key.remoteJid)
       const timestamp = Number(entry.messageTimestamp)
       const recent = Number.isFinite(timestamp) && timestamp >= connectedSince
+      if (type === 'notify' && !requestId && recent && !ownChat && !key.fromMe && entry.message) {
+        try {
+          await tools.onIncoming(entry)
+        } catch {
+          logMenu('Traitement automatique WhatsApp indisponible.')
+        }
+      }
       if (!entry.message && entry.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT) {
         if (ownChat && (type === 'notify' || recent)) {
           logMenu('Message chiffré non lisible dans la conversation personnelle. Réception en attente du renvoi WhatsApp.')
@@ -127,13 +147,13 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
       }
 
       const content = normalizeMessageContent(entry.message)
-      const media = getMedia(content)
       const selection = getMenuSelection(content)
+      const media = containsViewOnce(entry.message) ? undefined : getMedia(content)
       const body = selection ?? content?.conversation ?? content?.extendedTextMessage?.text ?? media?.msg.caption
       const parsed = parseDomaCommand(body)
       if (!parsed || ((type === 'append' || requestId) && (!key.id || !recent))) continue
       const isMenu = parsed.command.name === 'menu'
-      if (!key.fromMe || !ownChat) {
+      if (!key.fromMe || (!ownChat && !(groupChat && parsed.command.groupOnly))) {
         if (isMenu && key.fromMe) logMenu('Commande .menu ignorée : conversation personnelle non reconnue.')
         continue
       }
@@ -146,12 +166,21 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
       if (isMenu || parsed.command.name === 'ping') logMenu(`Commande .${parsed.command.name} reçue (${selection ? 'sélecteur' : type}).`)
 
       const context = content?.extendedTextMessage?.contextInfo ?? media?.msg.contextInfo
-      const quoted = getMedia(normalizeMessageContent(context?.quotedMessage))
+      const quoted = containsViewOnce(context?.quotedMessage) ? undefined : getMedia(normalizeMessageContent(context?.quotedMessage))
       try {
         await handleDomaMessage({ chat: key.remoteJid, ...media, quoted }, {
           downloadMedia,
           sendMenu,
           send: (jid, reply) => socket.sendMessage(jid, reply),
+          whatsapp: (name, args) => {
+            if (parsed.command.groupOnly && !groupChat) throw new MemeInputError('Utilise cette commande dans le groupe WhatsApp concerné.')
+            return tools.run(name, args, {
+              jid: key.remoteJid,
+              ownJids,
+              quotedJid: context?.participant,
+              mentionedJids: context?.mentionedJid ?? [],
+            })
+          },
         }, parsed)
         if (isMenu || parsed.command.name === 'ping') logMenu(`Réponse .${parsed.command.name} envoyée.`)
       } catch {
