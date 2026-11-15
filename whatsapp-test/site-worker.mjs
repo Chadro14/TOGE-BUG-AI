@@ -69,7 +69,7 @@ async function openSession(session) {
   socket.ev.on('creds.update', () => {
     session.saving = session.saving.then(saveCreds).catch(() => console.error('Bot Connect : sauvegarde de session indisponible.'))
   })
-  const onMessages = bindCommands(socket, baileys, undefined, session.phone)
+  const onMessages = bindCommands(socket, baileys)
   socket.ev.on('messages.upsert', event => { if (isCurrent() && session.active) void onMessages(event).catch(() => {}) })
   const pairing = createPairingHandler(socket, session.phone, {
     isCurrent,
