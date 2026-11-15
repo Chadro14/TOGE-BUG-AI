@@ -9,6 +9,11 @@ const { MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES, MemeInputError } = require('../doma-c
 
 const run = promisify(execFile)
 const TELEGRAM = 'https://api.telegram.org'
+const YOUTUBE_VIDEO_FORMAT = [
+  'b[ext=mp4][vcodec^=avc1][acodec^=mp4a][height<=720][filesize_approx<=20M]',
+  'bv[ext=mp4][vcodec^=avc1][height<=720][filesize_approx<=15M]+ba[ext=m4a][acodec^=mp4a][audio_channels<=2][filesize_approx<=4M]',
+  'b[ext=mp4][vcodec^=avc1][acodec^=mp4a][height<=720][filesize_approx=none]',
+].join('/')
 
 async function downloadImage(url, request) {
   const response = await request(url, { signal: AbortSignal.timeout(15000), redirect: 'error' })
@@ -75,12 +80,11 @@ async function youtubeMedia(args, audio) {
   const extension = audio ? 'mp3' : 'mp4'
   try {
     await run('yt-dlp', [
-      '--ignore-config', '--no-playlist', '--no-warnings', '--no-progress',
+      '--ignore-config', '--js-runtimes', 'node', '--no-playlist', '--no-warnings', '--no-progress',
       '--socket-timeout', '15', '--retries', '1', '--max-filesize', String(MAX_UPLOAD_BYTES),
       '-o', join(directory, 'media.%(ext)s'),
       ...(audio ? ['-f', 'ba/b', '-x', '--audio-format', 'mp3', '--audio-quality', '128K']
-        : ['-f', 'b[ext=mp4][vcodec^=avc1][acodec^=mp4a][height<=720]/bv[ext=mp4][vcodec^=avc1][height<=720]+ba[ext=m4a]',
-          '--merge-output-format', 'mp4']),
+        : ['-f', YOUTUBE_VIDEO_FORMAT, '--merge-output-format', 'mp4']),
       '--', url,
     ], {
       env: { ...process.env, PATH: [join(__dirname, '..', 'bin'), process.env.PATH].filter(Boolean).join(delimiter) },
