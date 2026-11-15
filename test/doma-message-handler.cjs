@@ -42,14 +42,14 @@ const commands = [
   { section: 'Principal', name: 'owner', run: (_, { reply }) => reply('Créateur de Domma · Son Altesse') },
   { section: 'Principal', name: 'repo', run: (_, { reply }) => reply('https://github.com/Chadro14/TOGE-BUG-AI') },
   { section: 'Stickers', name: 'sticker', aliases: ['s'], run: makeSticker },
-  { section: 'Stickers', name: 'smeme', usage: 'Haut|Bas', run: makeMeme },
+  { section: 'Stickers', name: 'smeme', usage: 'Haut|Bas', requireOwnMedia: true, run: makeMeme },
   { section: 'Stickers', name: 'emojimix', usage: 'emoji + emoji', run: makeEmojiMix },
   { section: 'Stickers', name: 'telestick', usage: 'lien du pack', run: makeTelegramSticker },
   { section: 'YouTube', name: 'ytaudio', aliases: ['ytmp3'], usage: 'lien YouTube', run: sendYouTubeAudio },
   { section: 'YouTube', name: 'ytvideo', aliases: ['ytmp4'], usage: 'lien YouTube', run: sendYouTubeVideo },
   { section: 'YouTube', name: 'ytsearch', usage: 'titre à chercher', run: showYouTubeSearch },
   { section: 'YouTube', name: 'play', usage: 'titre à écouter', run: playYouTube },
-  { section: 'Outils', name: 'tourl', run: shareMedia },
+  { section: 'Outils', name: 'tourl', requireOwnMedia: true, run: shareMedia },
   { section: 'Texte', name: 'styletext', usage: 'texte', run: (args, { reply }) => reply(fancy(requireText(args, 'styletext'))) },
   { section: 'Texte', name: 'fliptext', usage: 'texte', run: flipText },
   { section: 'Texte', name: 'ebinary', usage: 'texte', run: encodeBinary },
@@ -91,7 +91,7 @@ const commands = [
     autoview: 'on | off',
     autoreact: 'on [emoji] | off',
   }).map(([name, usage]) => ({
-    section: 'WhatsApp', name, usage, run: async (args, { whatsapp, reply }) => reply(await whatsapp(name, args)),
+    section: 'WhatsApp', name, usage, selfOnly: true, run: async (args, { whatsapp, reply }) => reply(await whatsapp(name, args)),
   })),
   ...Object.entries({
     groupinfo: '',
@@ -257,7 +257,7 @@ async function sendYouTubeVideo(args, { send }) {
   await send({ video: await youtubeMedia(args, false), mimetype: 'video/mp4', caption: 'Ta vidéo YouTube est prête.' })
 }
 
-async function handleDomaMessage(message, { downloadMedia, sendMenu, send, whatsapp, request = fetch, receivedAt = performance.now() }, parsed = parseDomaCommand(message.body)) {
+async function handleDomaMessage(message, { downloadMedia, sendMenu, send, whatsapp, request = fetch, receivedAt = performance.now(), onCommandError = () => {} }, parsed = parseDomaCommand(message.body)) {
   if (!parsed) return false
   const { command, args } = parsed
   const sendContent = async (content, detail) => {
@@ -277,6 +277,7 @@ async function handleDomaMessage(message, { downloadMedia, sendMenu, send, whats
   try {
     await command.run(args, { message, downloadMedia, send: sendContent, reply, sticker, whatsapp, request, receivedAt })
   } catch (error) {
+    if (!(error instanceof MemeInputError)) onCommandError(command.name)
     const fallback = command.name === 'smeme' ? 'La génération du sticker a échoué. Réessaie dans un instant.'
       : `La commande .${command.name} a échoué. Réessaie dans un instant.`
     await reply(error instanceof MemeInputError ? error.message : fallback, true)

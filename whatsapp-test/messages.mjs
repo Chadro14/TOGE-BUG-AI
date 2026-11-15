@@ -41,8 +41,8 @@ function getMenuSelection(content) {
 
 export function bindCommands(socket, baileys, dir, logMenu = () => {}) {
   const {
-    downloadContentFromMessage, isJidGroup, jidNormalizedUser, normalizeMessageContent, proto,
-    prepareWAMessageMedia, generateWAMessageFromContent, generateMessageIDV2,
+    downloadContentFromMessage, isJidGroup, isLidUser, isPnUser, jidNormalizedUser, normalizeMessageContent, prepareWAMessageMedia, proto,
+    generateWAMessageFromContent, generateMessageIDV2,
   } = baileys
   const connectedSince = Math.floor(Date.now() / 1000)
   const handledCommands = new Set()
@@ -63,13 +63,15 @@ export function bindCommands(socket, baileys, dir, logMenu = () => {}) {
   }
 
   async function sendMenu(jid, { text, video, channel }) {
-    const videoOptions = { options: { timeout: 15000 }, mediaUploadTimeoutMs: 20000 }
     const contextInfo = { forwardingScore: 1, isForwarded: true }
-    if (!video) {
-      await socket.sendMessage(jid, { text, contextInfo, linkPreview: null })
-      return
-    }
+    await socket.sendMessage(jid, { text, contextInfo, linkPreview: null })
+    if (!video) return
+    // Some WhatsApp clients do not display native flows even when relayMessage resolves.
+    void sendMenuVideo(jid, video, channel, contextInfo)
+  }
 
+  async function sendMenuVideo(jid, video, channel, contextInfo) {
+    const videoOptions = { options: { timeout: 15000 }, mediaUploadTimeoutMs: 20000 }
     const media = { video: { url: video }, mimetype: 'video/mp4' }
 
     try {
@@ -80,7 +82,7 @@ export function bindCommands(socket, baileys, dir, logMenu = () => {}) {
             messageContextInfo: { deviceListMetadata: {}, deviceListMetadataVersion: 2 },
             interactiveMessage: {
               header: { hasMediaAttachment: true, videoMessage },
-              body: { text },
+              body: { text: 'Chaîne Domma' },
               contextInfo,
               nativeFlowMessage: {
                 messageVersion: 1,
@@ -113,9 +115,9 @@ export function bindCommands(socket, baileys, dir, logMenu = () => {}) {
       })
     } catch {
       try {
-        await socket.sendMessage(jid, { ...media, caption: text, contextInfo }, videoOptions)
+        await socket.sendMessage(jid, { ...media, contextInfo }, videoOptions)
       } catch {
-        await socket.sendMessage(jid, { text, contextInfo, linkPreview: null })
+        // The command list was already delivered as a normal message.
       }
       logMenu('Bouton du menu indisponible pour cet envoi.')
     }
@@ -152,26 +154,31 @@ export function bindCommands(socket, baileys, dir, logMenu = () => {}) {
       const body = selection ?? content?.conversation ?? content?.extendedTextMessage?.text ?? media?.msg.caption
       const parsed = parseDomaCommand(body)
       if (!parsed || ((type === 'append' || requestId) && (!key.id || !recent))) continue
+      if (!groupChat && !isPnUser(key.remoteJid) && !isLidUser(key.remoteJid)) continue
       const isMenu = parsed.command.name === 'menu'
-      if (!key.fromMe || (!ownChat && !(groupChat && parsed.command.groupOnly))) {
-        if (isMenu && key.fromMe) logMenu('Commande .menu ignorée : conversation personnelle non reconnue.')
-        continue
-      }
+      if (parsed.command.selfOnly && !(key.fromMe && ownChat)) continue
+      if (parsed.command.groupOnly && !(key.fromMe && (groupChat || ownChat))) continue
 
-      if (key.id && handledCommands.has(key.id)) continue
-      if (key.id) {
+      const commandId = key.id && `${key.remoteJid}\0${key.participant ?? ''}\0${key.id}`
+      if (commandId && handledCommands.has(commandId)) continue
+      if (commandId) {
         if (handledCommands.size >= 128) handledCommands.delete(handledCommands.values().next().value)
-        handledCommands.add(key.id)
+        handledCommands.add(commandId)
       }
       if (isMenu || parsed.command.name === 'ping') logMenu(`Commande .${parsed.command.name} reçue (${selection ? 'sélecteur' : type}).`)
 
       const context = content?.extendedTextMessage?.contextInfo ?? media?.msg.contextInfo
-      const quoted = containsViewOnce(context?.quotedMessage) ? undefined : getMedia(normalizeMessageContent(context?.quotedMessage))
+      const quotedAuthor = context?.participant && jidNormalizedUser(context.participant)
+      const sender = jidNormalizedUser(key.participant || key.remoteJid)
+      const ownQuote = key.fromMe ? ownJids.has(quotedAuthor) : quotedAuthor === sender
+      const canUseQuote = !parsed.command.requireOwnMedia || key.fromMe || ownQuote
+      const quoted = !canUseQuote || containsViewOnce(context?.quotedMessage) ? undefined : getMedia(normalizeMessageContent(context?.quotedMessage))
       try {
         await handleDomaMessage({ chat: key.remoteJid, ...media, quoted }, {
           downloadMedia,
           sendMenu,
           send: (jid, reply) => socket.sendMessage(jid, reply),
+          onCommandError: name => logMenu(`Échec du traitement de .${name}.`),
           whatsapp: (name, args) => {
             if (parsed.command.groupOnly && !groupChat) throw new MemeInputError('Utilise cette commande dans le groupe WhatsApp concerné.')
             return tools.run(name, args, {
@@ -184,7 +191,7 @@ export function bindCommands(socket, baileys, dir, logMenu = () => {}) {
         }, parsed)
         if (isMenu || parsed.command.name === 'ping') logMenu(`Réponse .${parsed.command.name} envoyée.`)
       } catch {
-        if (key.id) handledCommands.delete(key.id)
+        if (commandId) handledCommands.delete(commandId)
         logMenu(`Échec de la réponse .${parsed.command.name}.`)
       }
     }
