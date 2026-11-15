@@ -9,6 +9,12 @@ const { MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES, MemeInputError } = require('../doma-c
 
 const run = promisify(execFile)
 const TELEGRAM = 'https://api.telegram.org'
+const YOUTUBE_AUDIO_FORMAT = [
+  'ba[ext=m4a][acodec^=mp4a][audio_channels<=2][filesize_approx<=20M]',
+  'ba[audio_channels<=2][filesize_approx<=20M]',
+  'ba[audio_channels<=?2][filesize_approx=none]',
+  'b[filesize_approx<=?20M]',
+].join('/')
 const YOUTUBE_VIDEO_FORMAT = [
   'b[ext=mp4][vcodec^=avc1][acodec^=mp4a][height<=720][filesize_approx<=20M]',
   'bv[ext=mp4][vcodec^=avc1][height<=720][filesize_approx<=15M]+ba[ext=m4a][acodec^=mp4a][audio_channels<=2][filesize_approx<=4M]',
@@ -83,8 +89,7 @@ async function youtubeMedia(args, audio) {
       '--ignore-config', '--js-runtimes', 'node', '--no-playlist', '--no-warnings', '--no-progress',
       '--socket-timeout', '15', '--retries', '1', '--max-filesize', String(MAX_UPLOAD_BYTES),
       '-o', join(directory, 'media.%(ext)s'),
-      ...(audio ? ['-f', 'ba[audio_channels<=2][filesize_approx<=20M]/ba[audio_channels<=?2][filesize_approx=none]/b[filesize_approx<=?20M]',
-        '-x', '--audio-format', 'mp3', '--audio-quality', '128K']
+      ...(audio ? ['-f', YOUTUBE_AUDIO_FORMAT, '-x', '--audio-format', 'mp3', '--audio-quality', '128K']
         : ['-f', YOUTUBE_VIDEO_FORMAT, '--merge-output-format', 'mp4']),
       '--', url,
     ], {
