@@ -2,7 +2,7 @@ import { handleDomaMessage } from '../test/doma-message-handler.cjs'
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
-export function bindCommands(socket, { downloadContentFromMessage, jidNormalizedUser, normalizeMessageContent }, logMenu = () => {}) {
+export function bindCommands(socket, { downloadContentFromMessage, jidNormalizedUser, normalizeMessageContent, proto }, logMenu = () => {}) {
   const connectedSince = Math.floor(Date.now() / 1000)
   const handledMenus = new Set()
 
@@ -25,13 +25,21 @@ export function bindCommands(socket, { downloadContentFromMessage, jidNormalized
 
     for (const entry of messages) {
       const { key } = entry
+      const ownChat = key.remoteJid && ownJids.has(jidNormalizedUser(key.remoteJid))
+      const timestamp = Number(entry.messageTimestamp)
+      const recent = Number.isFinite(timestamp) && timestamp >= connectedSince
+      if (!entry.message && entry.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT) {
+        if (ownChat && (type === 'notify' || recent)) {
+          logMenu('Message chiffré non lisible dans la conversation personnelle. Réception en attente du renvoi WhatsApp.')
+        }
+        continue
+      }
       const { conversation, extendedTextMessage, imageMessage } = entry.message ?? {}
       const normalized = normalizeMessageContent(entry.message)
       const text = normalized?.conversation ?? normalized?.extendedTextMessage?.text ?? normalized?.imageMessage?.caption
       const isMenu = /^\.menu(?:\s|$)/i.test(text?.trim() ?? '')
-      const timestamp = Number(entry.messageTimestamp)
-      if (type === 'append' && (!isMenu || !key.id || !Number.isFinite(timestamp) || timestamp < connectedSince)) continue
-      if (!key.fromMe || !key.remoteJid || !ownJids.has(jidNormalizedUser(key.remoteJid))) {
+      if (type === 'append' && (!isMenu || !key.id || !recent)) continue
+      if (!key.fromMe || !ownChat) {
         if (isMenu && key.fromMe) logMenu('Commande .menu ignorée : conversation personnelle non reconnue.')
         continue
       }
@@ -57,6 +65,7 @@ export function bindCommands(socket, { downloadContentFromMessage, jidNormalized
         async sendText(jid, text) {
           try {
             await socket.sendMessage(jid, { text })
+            if (isMenu) logMenu('Réponse .menu envoyée.')
           } catch (error) {
             if (isMenu && key.id) handledMenus.delete(key.id)
             throw error

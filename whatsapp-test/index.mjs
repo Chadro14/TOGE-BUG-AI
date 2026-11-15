@@ -178,6 +178,7 @@ async function startSessions(names, hostedPhone) {
 }
 
 try {
+  console.log('Doma test · Baileys 7.0.0-rc14')
   const names = process.argv.slice(2)
   if (names.length === 1 && names[0] === '--hosted') {
     try {
