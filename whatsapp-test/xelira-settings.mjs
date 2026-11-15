@@ -9,18 +9,19 @@ export const settingsCommands = new Map([
   ['anticall', 'Activer ou couper le refus automatique des appels'],
   ['welcome', 'Activer un message de bienvenue dans le groupe'],
   ['antilink', 'Modérer les liens d’invitation WhatsApp dans le groupe'],
+  ['antistatus', 'Modérer les statuts partagés dans le groupe'],
 ])
 
 export async function xeliraSettings(socket, baileys, dir, log, isActive) {
   const path = join(dir, 'xelira-settings.json')
-  const state = { prefix: '.', public: true, anticall: false, welcome: [], antilink: [] }
+  const state = { prefix: '.', public: true, anticall: false, welcome: [], antilink: [], antistatus: [] }
   const saved = await readFile(path, 'utf8').then(JSON.parse).catch(error => {
     if (error.code !== 'ENOENT') log('Xelira MD : réglages illisibles.')
     return null
   })
   if (typeof saved?.prefix === 'string' && /^[.!#?%+~&-]$/.test(saved.prefix)) state.prefix = saved.prefix
   for (const name of ['public', 'anticall']) if (typeof saved?.[name] === 'boolean') state[name] = saved[name]
-  for (const name of ['welcome', 'antilink']) {
+  for (const name of ['welcome', 'antilink', 'antistatus']) {
     if (Array.isArray(saved?.[name])) state[name] = saved[name].filter(id => typeof id === 'string' && baileys.isJidGroup(id)).slice(0, 150)
   }
   let saving = Promise.resolve()
@@ -58,10 +59,11 @@ export async function xeliraSettings(socket, baileys, dir, log, isActive) {
 
   return {
     state,
-    async moderateInvitation(key, text, ownJids) {
+    async moderateGroup(key, text, ownJids, isGroupStatus) {
       const jid = key.remoteJid
-      if (!key.id || !key.participant || key.fromMe || !state.antilink.includes(jid)
-          || !/\bhttps?:\/\/chat\.whatsapp\.com\/[a-z\d]{15,32}\b/i.test(text)) return false
+      const matchesRule = (isGroupStatus && state.antistatus.includes(jid))
+        || (state.antilink.includes(jid) && /\bhttps?:\/\/chat\.whatsapp\.com\/[a-z\d]{15,32}\b/i.test(text))
+      if (!key.id || !key.participant || key.fromMe || !matchesRule) return false
       const group = await socket.groupMetadata(jid)
       const ids = person => [person.id, person.lid, person.phoneNumber].filter(Boolean).map(baileys.jidNormalizedUser)
       const senderIds = new Set([key.participant, key.participantAlt].filter(Boolean).map(baileys.jidNormalizedUser))
@@ -73,7 +75,7 @@ export async function xeliraSettings(socket, baileys, dir, log, isActive) {
     },
     async run(name, args, { jid, ownChat, key, ownJids, reply }) {
       if (!key.fromMe) return
-      const groupSetting = name === 'welcome' || name === 'antilink'
+      const groupSetting = Array.isArray(state[name])
       if (!groupSetting && !ownChat) throw new MemeInputError('Utilise ce réglage dans ta conversation personnelle.')
       if (name === 'setprefix') {
         if (!args) return reply(`Préfixe actuel · ${state.prefix}`)
@@ -97,7 +99,8 @@ export async function xeliraSettings(socket, baileys, dir, log, isActive) {
           }
           return { [name]: groups }
         })
-        return reply(`${name === 'welcome' ? 'Bienvenue' : 'Modération des liens d’invitation'} ${state[name].includes(jid) ? 'activée' : 'désactivée'} pour ce groupe.`)
+        const label = { welcome: 'Bienvenue', antilink: 'Modération des liens d’invitation', antistatus: 'Modération des statuts de groupe' }[name]
+        return reply(`${label} ${state[name].includes(jid) ? 'activée' : 'désactivée'} pour ce groupe.`)
       }
       if (mode) await save(() => ({ [name]: mode === 'on' }))
       return reply(name === 'public' ? `Commandes publiques ${state.public ? 'activées' : 'désactivées'}.`

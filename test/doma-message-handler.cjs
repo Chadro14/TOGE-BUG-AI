@@ -261,7 +261,9 @@ async function handleDomaMessage(message, { downloadMedia, sendMenu, send, whats
   if (!parsed) return false
   const { command, args } = parsed
   const sendContent = async (content, detail) => {
-    if (content.caption) return send(message.chat, { ...content, caption: formatReply(command.name, content.caption) })
+    if (content.image || content.video || content.document) {
+      return send(message.chat, { ...content, caption: formatReply(command.name, content.caption || 'Ton média est prêt.') })
+    }
     await send(message.chat, content)
     const label = content.sticker ? 'Ton sticker est prêt.' : 'Ton audio est prêt.'
     await send(message.chat, { text: formatReply(command.name, detail ? `${label}\n${detail}` : label) }).catch(() => {})

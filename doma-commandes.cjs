@@ -27,11 +27,11 @@ function fancy(text) {
 }
 
 function royalFrame(title, text) {
-  return [`╔════〔 *${fancy(title)}* 〕════╗`, '', text, '', '╚══════════════════╝'].join('\n')
+  return [`╭─〔 *${fancy(title)}* 〕`, '', text, '', '╰─〔 𝕯𝖔𝖒𝖒𝖆 〕'].join('\n')
 }
 
 function formatReply(name, text, failed = false) {
-  const title = failed ? 'Commande indisponible' : name.toUpperCase()
+  const title = failed ? `${name.toUpperCase()} · Indisponible` : name.toUpperCase()
   return royalFrame(title, text)
 }
 
@@ -40,7 +40,7 @@ function menu(commands, selected) {
   for (const { section, name, usage = '' } of commands) {
     const id = section.toLowerCase()
     if (!sections.has(id)) sections.set(id, { id, title: section, commands: [] })
-    sections.get(id).commands.push(`┆❏ *.${name}*${usage ? ` — ${usage}` : ''}`)
+    sections.get(id).commands.push(`│ ◇ *.${name}*${usage ? ` · ${usage}` : ''}`)
   }
   const categories = [...sections.values()]
   const [section, page = '1'] = (selected ?? '').trim().split(/\s+/)
@@ -51,9 +51,9 @@ function menu(commands, selected) {
   const current = /^\d+$/.test(page) ? Math.min(Math.max(Number(page), 1), totalPages) : 1
   const start = (current - 1) * pageSize
   const body = category
-    ? [`╭──『 *${category.title.toUpperCase()}* 』`, ...category.commands.slice(start, start + pageSize), '╰──────────────'].join('\n')
-    : [`*${count} commandes* · ${categories.length} catégories`, 'Par Son Altesse', '', '╭──『 *MENU* 』',
-      ...categories.map(({ title }, index) => `┆❏ *.menu ${index + 1}* — ${title}`), '╰──────────────'].join('\n')
+    ? [`╭─〔 *${fancy(category.title.toUpperCase())}* 〕`, ...category.commands.slice(start, start + pageSize), '╰────────────'].join('\n')
+    : [`*${count} commandes* · ${categories.length} catégories`, '', `╭─〔 *${fancy('CATEGORIES')}* 〕`,
+      ...categories.map(({ title }, index) => `│ ◇ *${title}* · .menu ${index + 1}`), '╰────────────'].join('\n')
   const fallback = category ? [
     totalPages > 1 && `Page ${current}/${totalPages}`,
     current > 1 && `Page précédente · .menu ${category.id} ${current - 1}`,
@@ -63,7 +63,7 @@ function menu(commands, selected) {
   return {
     video: category ? undefined : MENU_VIDEO,
     channel: CHANNEL,
-    text: [`╭── *D O M M A* ──╮`, body, fallback].filter(Boolean).join('\n\n'),
+    text: [`━━━ 〔 *${fancy('DOMMA')}* 〕 ━━━`, body, fallback, '— Son Altesse'].filter(Boolean).join('\n\n'),
   }
 }
 

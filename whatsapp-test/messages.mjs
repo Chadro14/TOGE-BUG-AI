@@ -10,6 +10,33 @@ const MEDIA_TYPES = {
   stickerMessage: 'sticker',
 }
 
+let menuVideo
+
+function loadMenuVideo(url) {
+  if (!menuVideo) {
+    menuVideo = (async () => {
+      const response = await fetch(url, { signal: AbortSignal.timeout(12000), redirect: 'error' })
+      if (!response.ok || !response.body || !/^video\/mp4(?:;|$)/i.test(response.headers.get('content-type') ?? '')) {
+        throw new Error('Vidéo de menu indisponible')
+      }
+      const chunks = []
+      let size = 0
+      for await (const chunk of response.body) {
+        size += chunk.length
+        if (size > 16 * 1024 * 1024) throw new Error('Vidéo de menu trop volumineuse')
+        chunks.push(chunk)
+      }
+      const buffer = Buffer.concat(chunks, size)
+      if (buffer.subarray(4, 8).toString() !== 'ftyp') throw new Error('Vidéo de menu invalide')
+      return buffer
+    })().catch(error => {
+      menuVideo = undefined
+      throw error
+    })
+  }
+  return menuVideo
+}
+
 export function getMedia(content) {
   const mtype = Object.keys(MEDIA_TYPES).find(type => content?.[type])
   return mtype && { mtype, msg: content[mtype] }
@@ -55,7 +82,7 @@ function getMenuSelection(content) {
 
 export function bindCommands(socket, baileys, dir, logMenu = () => {}) {
   const {
-    downloadContentFromMessage, isJidGroup, isLidUser, isPnUser, jidNormalizedUser, normalizeMessageContent, prepareWAMessageMedia, proto,
+    downloadContentFromMessage, isJidGroup, isLidUser, isPnUser, jidNormalizedUser, normalizeMessageContent, proto,
     generateWAMessageFromContent, generateMessageIDV2,
   } = baileys
   const connectedSince = Math.floor(Date.now() / 1000)
@@ -64,25 +91,28 @@ export function bindCommands(socket, baileys, dir, logMenu = () => {}) {
 
   async function sendMenu(jid, { text, video, channel }) {
     const contextInfo = { forwardingScore: 1, isForwarded: true }
-    await socket.sendMessage(jid, { text, contextInfo, linkPreview: null })
-    if (!video) return
-    // Some WhatsApp clients do not display native flows even when relayMessage resolves.
-    void sendMenuVideo(jid, video, channel, contextInfo)
+    if (!video) {
+      await socket.sendMessage(jid, { text, contextInfo, linkPreview: null })
+      return
+    }
+    try {
+      await socket.sendMessage(jid, { video: await loadMenuVideo(video), mimetype: 'video/mp4', caption: text, contextInfo },
+        { options: { timeout: 15000 }, mediaUploadTimeoutMs: 20000 })
+    } catch {
+      logMenu('Vidéo du menu indisponible pour cet envoi.')
+      await socket.sendMessage(jid, { text, contextInfo, linkPreview: null })
+    }
+    await sendMenuButton(jid, channel, contextInfo)
   }
 
-  async function sendMenuVideo(jid, video, channel, contextInfo) {
-    const videoOptions = { options: { timeout: 15000 }, mediaUploadTimeoutMs: 20000 }
-    const media = { video: { url: video }, mimetype: 'video/mp4' }
-
+  async function sendMenuButton(jid, channel, contextInfo) {
     try {
-      const { videoMessage } = await prepareWAMessageMedia(media, { ...videoOptions, upload: socket.waUploadToServer })
       const message = proto.Message.fromObject({
         viewOnceMessage: {
           message: {
             messageContextInfo: { deviceListMetadata: {}, deviceListMetadataVersion: 2 },
             interactiveMessage: {
-              header: { hasMediaAttachment: true, videoMessage },
-              body: { text: 'Chaîne Domma' },
+              body: { text: '◇  Chaîne Domma' },
               contextInfo,
               nativeFlowMessage: {
                 messageVersion: 1,
@@ -114,11 +144,6 @@ export function bindCommands(socket, baileys, dir, logMenu = () => {}) {
         ],
       })
     } catch {
-      try {
-        await socket.sendMessage(jid, { ...media, contextInfo }, videoOptions)
-      } catch {
-        // The command list was already delivered as a normal message.
-      }
       logMenu('Bouton du menu indisponible pour cet envoi.')
     }
   }

@@ -1,4 +1,5 @@
 import { MemeInputError, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES } from '../doma-commandes.cjs'
+import { convertMedia } from '../test/doma-media.cjs'
 
 export const sharedCommands = new Map([
   ['uptime', ['uptime', 'Temps de fonctionnement']],
@@ -42,6 +43,11 @@ export const extraCommands = new Map([
   ['tagall', 'Mentionner les membres du groupe'],
   ['status', 'Afficher la disponibilité et les commandes du bot'],
   ['pinterest', 'Rechercher des images sur Pinterest'],
+  ['remini', 'Améliorer la netteté d’une image'],
+  ['removebg', 'Retirer un fond uni vert ou bleu'],
+  ['capcut', 'Ouvrir un modèle public dans CapCut'],
+  ['misc', 'Voir les outils et leurs exemples'],
+  ['setbot', 'Changer le nom WhatsApp du compte connecté'],
 ])
 
 const quotes = [
@@ -66,9 +72,49 @@ export async function runExtra(name, args, ctx) {
     case 'shayari': return reply(pick(poems))
     case 'roseday': return reply('Une rose pour te souhaiter une belle journée.')
     case 'status': return reply('Xelira MD est en ligne. Utilise .menu pour afficher les commandes.')
+    case 'misc': {
+      const p = ctx.prefix
+      return reply([
+        `${p}weather Kinshasa · Météo`,
+        `${p}sticker · Réponds à une image`,
+        `${p}url · Crée un lien pour ton média`,
+        `${p}remini · Rends une image plus nette`,
+        `${p}removebg vert · Retire un fond vert uni`,
+      ].join('\n'))
+    }
     case 'pinterest': {
       if (!args || args.length > 160) throw new MemeInputError('Utilise .pinterest suivi du sujet à rechercher.')
       return reply(`Pinterest\nhttps://www.pinterest.com/search/pins/?${new URLSearchParams({ q: args })}`)
+    }
+    case 'capcut': {
+      const url = URL.parse(args)
+      if (url?.protocol !== 'https:' || url.username || url.password || url.port
+          || !['capcut.com', 'www.capcut.com'].includes(url.hostname)
+          || !/^\/(?:template-detail\/[^/?]+|t\/[\w-]+)\/?$/i.test(url.pathname)) {
+        throw new MemeInputError('Utilise .capcut suivi d’un lien vers un modèle public CapCut.')
+      }
+      url.search = ''
+      url.hash = ''
+      return reply(`Ouvrir dans CapCut\n${url.href}`)
+    }
+    case 'remini':
+    case 'removebg': {
+      if (source?.mtype !== 'imageMessage') throw new MemeInputError(`Envoie une image ou réponds à une image avec .${name}.`)
+      const color = args.toLowerCase()
+      if (name === 'removebg' && color && !['vert', 'bleu'].includes(color)) {
+        throw new MemeInputError('Utilise .removebg vert ou .removebg bleu avec une image sur fond uni.')
+      }
+      const input = await downloadMedia(source, MAX_IMAGE_BYTES)
+      const filter = name === 'remini'
+        ? 'unsharp=5:5:0.8'
+        : `format=rgba,colorkey=${color === 'bleu' ? '0x0000ff' : '0x00ff00'}:0.22:0.06`
+      const image = await convertMedia(input, 'png', [
+        '-map', '0:v:0', '-vf', `scale=w=min(iw\\,1600):h=min(ih\\,1600):force_original_aspect_ratio=decrease,${filter}`,
+        '-frames:v', '1', '-threads', '1',
+      ])
+      return socket.sendMessage(jid, name === 'removebg'
+        ? { document: image, mimetype: 'image/png', fileName: 'sans-fond.png', caption: 'PNG avec fond transparent.' }
+        : { image, mimetype: 'image/png', caption: 'Image rendue plus nette.' })
     }
     case 'lyrics': {
       const [artist, title, ...rest] = args.split('|').map(part => part.trim())
@@ -102,6 +148,16 @@ export async function runExtra(name, args, ctx) {
       if (!ownSource || source?.mtype !== 'imageMessage') throw new MemeInputError('Envoie ton image avec la légende .setpp.')
       await socket.updateProfilePicture(socket.user.id, await downloadMedia(source, MAX_IMAGE_BYTES))
       return reply('Photo de profil mise à jour.')
+    }
+    case 'setbot': {
+      if (!key.fromMe) return
+      if (!ctx.ownChat) throw new MemeInputError('Utilise ce réglage dans ta conversation personnelle.')
+      const displayName = args.replace(/\s+/gu, ' ').trim()
+      if (!displayName || [...displayName].length > 25 || /\p{C}/u.test(displayName)) {
+        throw new MemeInputError('Utilise .setbot suivi d’un nom de 1 à 25 caractères.')
+      }
+      await socket.updateProfileName(displayName)
+      return reply(`Nom WhatsApp mis à jour · ${displayName}`)
     }
     case 'save': {
       if (!key.fromMe) return

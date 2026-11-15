@@ -146,8 +146,9 @@ export function bindXeliraCommands(socket, baileys, dir, log = () => {}, request
       const media = containsViewOnce(message.message) ? undefined : getMedia(content)
       const raw = content?.conversation ?? content?.extendedTextMessage?.text ?? media?.msg.caption
       const body = raw?.trim() ?? ''
+      const isGroupStatus = Boolean(message.message?.groupStatusMessage || message.message?.groupStatusMessageV2)
       if (type === 'notify' && !requestId && Number(message.messageTimestamp) >= startedAt
-          && await settings.moderateInvitation(key, body, ownJids).catch(() => false)) continue
+          && await settings.moderateGroup(key, body, ownJids, isGroupStatus).catch(() => false)) continue
       if (!body.startsWith(settings.state.prefix)) continue
       const [, name, args = ''] = /^(\S+)(?:\s+([\s\S]+))?$/u.exec(body.slice(1)) ?? []
       const normalized = name?.normalize('NFKC').toLowerCase()
@@ -195,7 +196,7 @@ export function bindXeliraCommands(socket, baileys, dir, log = () => {}, request
         } else if (settingsCommands.has(command)) {
           await settings.run(command, args, { jid, ownChat, key, ownJids, reply })
         } else if (extraCommands.has(command)) {
-          await runExtra(command, args, { socket, baileys, jid, key, reply, context, games, ownJids, ownsQuote, canUseQuotedMessage,
+          await runExtra(command, args, { socket, baileys, jid, key, reply, context, games, ownChat, ownJids, ownsQuote, canUseQuotedMessage, prefix: settings.state.prefix,
             source: media ?? quoted, ownSource: Boolean(media || ownsQuote), downloadMedia })
         } else {
           const mapped = command === 'spotify' ? 'spotify' : sharedCommands.get(command)[0]
