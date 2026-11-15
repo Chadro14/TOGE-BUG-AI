@@ -10,10 +10,10 @@ const FIT_STICKER = [
   `pad=${STICKER_SIZE}:(ow-iw)/2:(oh-ih)/2:color=black@0`,
 ].join(',')
 
-function encodeWebp(png, quality) {
+function encodeWebp(image, quality) {
   return new Promise((resolve, reject) => {
     const ffmpeg = spawn('ffmpeg', [
-      '-hide_banner', '-loglevel', 'error', '-f', 'image2pipe', '-c:v', 'png', '-i', 'pipe:0',
+      '-hide_banner', '-loglevel', 'error', '-i', 'pipe:0',
       '-vf', FIT_STICKER, '-frames:v', '1', '-c:v', 'libwebp', '-quality', String(quality),
       '-f', 'webp', 'pipe:1',
     ], { signal: AbortSignal.timeout(10000), stdio: ['pipe', 'pipe', 'ignore'] })
@@ -33,13 +33,13 @@ function encodeWebp(png, quality) {
       }
       resolve(size <= MAX_STICKER_BYTES ? Buffer.concat(chunks) : null)
     })
-    ffmpeg.stdin.end(png)
+    ffmpeg.stdin.end(image)
   })
 }
 
-async function createStaticSticker(png) {
+async function createStaticSticker(image) {
   for (const quality of [75, 50, 25]) {
-    const sticker = await encodeWebp(png, quality)
+    const sticker = await encodeWebp(image, quality)
     if (sticker) return sticker
   }
   throw new Error('Le sticker dépasse 100 Ko après compression.')

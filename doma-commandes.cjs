@@ -1,9 +1,11 @@
 'use strict'
 
 const CHANNEL = 'https://whatsapp.com/channel/0029Vb6aMu46RGJOcGGe1H1O'
+const MENU_VIDEO = 'https://files.catbox.moe/54auhj.mp4'
 const MEMEGEN = 'https://api.memegen.link/images/custom'
 const UGUU = 'https://uguu.se/upload.php'
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 const MIME_EXTENSIONS = new Map([
   ['image/jpeg', 'jpg'],
   ['image/png', 'png'],
@@ -16,19 +18,27 @@ const MEMEGEN_ESCAPES = {
 
 class MemeInputError extends Error {}
 
-function menu() {
+function fancy(text) {
+  return text.replace(/[A-Za-z]/g, letter => {
+    const first = letter < 'a' ? 'A' : 'a'
+    const offset = letter < 'a' ? 0x1d56c : 0x1d586
+    return String.fromCodePoint(offset + letter.charCodeAt(0) - first.charCodeAt(0))
+  })
+}
+
+function menu(commands) {
+  const sections = new Map()
+  for (const { section, name, usage = '' } of commands) {
+    if (!sections.has(section)) sections.set(section, [])
+    sections.get(section).push(`┆❏ .${fancy(name)}${usage ? ` ${usage}` : ''}`)
+  }
   return {
+    video: MENU_VIDEO,
+    channel: CHANNEL,
     text: [
-      '*DOMA BUG*',
-      'Par Son Altesse',
-      '',
-      '.menu — Afficher ce menu',
-      '.smeme Haut|Bas — Créer un sticker à partir d’une image jointe ou citée',
-      '',
-      'Chaîne Xelira Studio™',
-      CHANNEL,
-      '',
-      '.smeme envoie ton image à Uguu pour créer un lien temporaire, puis à Memegen avec le texte.',
+      `*${fancy('domma')}*`,
+      `Par ${fancy('Son Altesse')}`,
+      ...Array.from(sections, ([name, rows]) => ['', `╭──『 ${fancy(name)} 』`, ...rows, '╰──────────────']).flat(),
     ].join('\n'),
   }
 }
@@ -40,9 +50,12 @@ function encodeCaption(caption) {
   return /^\.{1,2}$/.test(escaped) ? `${escaped}_` : encodeURIComponent(escaped)
 }
 
-async function uploadBackground(image, mime, request) {
+async function uploadMedia(media, mime, filename, request = fetch) {
+  if (!Buffer.isBuffer(media) || media.length === 0 || media.length > MAX_UPLOAD_BYTES) {
+    throw new MemeInputError('La taille du fichier doit être comprise entre 1 octet et 20 Mo.')
+  }
   const form = new FormData()
-  form.append('files[]', new Blob([image], { type: mime }), `background.${MIME_EXTENSIONS.get(mime)}`)
+  form.append('files[]', new Blob([media], { type: mime }), filename)
   const response = await request(UGUU, {
     method: 'POST',
     body: form,
@@ -52,12 +65,12 @@ async function uploadBackground(image, mime, request) {
   if (!response.ok) throw new Error(`Uguu HTTP ${response.status}`)
   const data = await response.json()
   if (data.success !== true || !data.files?.[0]?.url) throw new Error('Uguu n’a renvoyé aucun lien')
-  const background = new URL(data.files[0].url)
-  if (background.protocol !== 'https:' || background.username || background.password ||
-      (background.hostname !== 'uguu.se' && !background.hostname.endsWith('.uguu.se'))) {
+  const url = new URL(data.files[0].url)
+  if (url.protocol !== 'https:' || url.username || url.password ||
+      (url.hostname !== 'uguu.se' && !url.hostname.endsWith('.uguu.se'))) {
     throw new Error('Lien Uguu invalide')
   }
-  return background.href
+  return url.href
 }
 
 async function createMeme({ image, mime, caption, request = fetch }) {
@@ -73,7 +86,7 @@ async function createMeme({ image, mime, caption, request = fetch }) {
     throw new MemeInputError('Raccourcis le texte en haut ou en bas.')
   }
 
-  const background = await uploadBackground(image, mime, request)
+  const background = await uploadMedia(image, mime, `background.${MIME_EXTENSIONS.get(mime)}`, request)
   const url = new URL(`${MEMEGEN}/${encodeCaption(top)}/${encodeCaption(bottom)}.png`)
   url.searchParams.set('background', background)
   url.searchParams.set('width', '512')
@@ -88,4 +101,4 @@ async function createMeme({ image, mime, caption, request = fetch }) {
   return Buffer.from(await result.arrayBuffer())
 }
 
-module.exports = { menu, createMeme, MemeInputError }
+module.exports = { menu, createMeme, uploadMedia, MemeInputError, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES }

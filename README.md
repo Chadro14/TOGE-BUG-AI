@@ -2,7 +2,7 @@
 
 1. Ouvre l’onglet **Startup** de ton serveur Node.js. Vérifie le dépôt
    `https://github.com/Chadro14/TOGE-BUG-AI`, choisis la branche
-   `test/doma-bot-hosting` et indique `index.js` comme fichier de démarrage.
+   `test/doma-bot-hosting-v7` et indique `index.js` comme fichier de démarrage.
 2. Dans **Files**, crée un fichier `.env` à côté de `package.json`. Sur une
    ligne, écris `DOMA_WHATSAPP_NUMBER=` suivi de ton propre numéro WhatsApp
    avec son indicatif international.
@@ -10,7 +10,12 @@
    Sur ton téléphone, ouvre **WhatsApp → Appareils connectés → Connecter
    un appareil → Associer avec un numéro de téléphone** et saisis le code.
 4. Quand la console affiche **Connecté à WhatsApp**, essaie `.menu` dans
-   ta conversation avec toi-même. La commande `.smeme` nécessite FFmpeg.
+   ta conversation avec toi-même.
+
+Installe FFmpeg pour les stickers et `yt-dlp` dans le `PATH` pour `.ytaudio`
+et `.ytvideo`. Pour `.telestick`, ajoute `TELEGRAM_BOT_TOKEN` au fichier `.env`
+du serveur. Cette commande importe un sticker statique à la fois, en indiquant
+le lien du pack et éventuellement le numéro du sticker.
 
 Cette branche déploie le test d’un compte. Les identifiants de session sont
 stockés dans `whatsapp-test/sessions/`. Garde ton code d’appairage et tes
