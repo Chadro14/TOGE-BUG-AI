@@ -29,7 +29,7 @@ function getMenuSelection(content) {
   return selection ? `.menu ${selection[1]}` : undefined
 }
 
-export function bindCommands(socket, baileys, logMenu = () => {}) {
+export function bindCommands(socket, baileys, logMenu = () => {}, pairingPhone = process.env.DOMA_WHATSAPP_NUMBER) {
   const {
     downloadContentFromMessage, jidNormalizedUser, normalizeMessageContent, proto,
     prepareWAMessageMedia, generateWAMessageFromContent, generateMessageIDV2,
@@ -55,7 +55,7 @@ export function bindCommands(socket, baileys, logMenu = () => {}) {
     const videoOptions = { options: { timeout: 15000 }, mediaUploadTimeoutMs: 20000 }
     const channelText = `Voir la chaîne\n${channel}`
     const ownJid = jidNormalizedUser(socket.user.id)
-    const phone = /^([1-9]\d{6,14})@s\.whatsapp\.net$/.exec(ownJid)?.[1] ?? process.env.DOMA_WHATSAPP_NUMBER?.trim()
+    const phone = /^([1-9]\d{6,14})@s\.whatsapp\.net$/.exec(ownJid)?.[1] ?? pairingPhone?.trim()
     const hasPhone = /^[1-9]\d{6,14}$/.test(phone ?? '')
     const catalogue = hasPhone ? `https://wa.me/${phone}?text=${encodeURIComponent('.menu catalogue')}` : undefined
     const catalogueText = catalogue ? `*Catalogue* · Ouvre le lien puis appuie sur Envoyer.\n${catalogue}` : '*Catalogue* · .menu catalogue'
