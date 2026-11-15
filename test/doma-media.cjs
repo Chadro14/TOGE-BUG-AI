@@ -3,7 +3,7 @@
 const { execFile } = require('node:child_process')
 const { mkdtemp, readFile, readdir, rm, stat } = require('node:fs/promises')
 const { tmpdir } = require('node:os')
-const { join } = require('node:path')
+const { delimiter, join } = require('node:path')
 const { promisify } = require('node:util')
 const { MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES, MemeInputError } = require('../doma-commandes.cjs')
 
@@ -82,7 +82,11 @@ async function youtubeMedia(args, audio) {
         : ['-f', 'b[ext=mp4][vcodec^=avc1][acodec^=mp4a][height<=720]/bv[ext=mp4][vcodec^=avc1][height<=720]+ba[ext=m4a]',
           '--merge-output-format', 'mp4']),
       '--', url,
-    ], { timeout: 90000, maxBuffer: 256 * 1024 })
+    ], {
+      env: { ...process.env, PATH: [join(__dirname, '..', 'bin'), process.env.PATH].filter(Boolean).join(delimiter) },
+      timeout: 90000,
+      maxBuffer: 256 * 1024,
+    })
     const filename = `media.${extension}`
     if (!(await readdir(directory)).includes(filename)) throw new MemeInputError('Le média est indisponible dans ce format ou dépasse 20 Mo.')
     const file = join(directory, filename)

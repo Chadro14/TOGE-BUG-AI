@@ -1,3 +1,4 @@
 .env
 node_modules/
 whatsapp-test/sessions/
+/bin/yt-dlp

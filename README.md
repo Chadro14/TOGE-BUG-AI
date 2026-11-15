@@ -12,8 +12,8 @@
 4. Quand la console affiche **Connecté à WhatsApp**, essaie `.menu` dans
    ta conversation avec toi-même.
 
-Installe FFmpeg pour les stickers et `yt-dlp` dans le `PATH` pour `.ytaudio`
-et `.ytvideo`. Pour `.telestick`, ajoute `TELEGRAM_BOT_TOKEN` au fichier `.env`
+Installe FFmpeg pour les stickers et `yt-dlp` dans le `PATH` ou dans `bin/`
+pour `.ytaudio` et `.ytvideo`. Pour `.telestick`, ajoute `TELEGRAM_BOT_TOKEN` au fichier `.env`
 du serveur. Cette commande importe un sticker statique à la fois, en indiquant
 le lien du pack et éventuellement le numéro du sticker.
 
