@@ -1,0 +1,30 @@
+# Never commit runtime credentials, WhatsApp sessions or server secrets.
+node_modules/
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# WhatsApp/Baileys session credentials
+session/
+sessions/
+session*/
+auth_info*/
+baileys_auth_info*/
+creds.json
+session.json
+*session*.zip
+*.session
+
+# Runtime data, debug logs and private keys
+database.json
+guru.data.json
+*.log
+logs/
+tmp/
+temp/
+.cache/
+*.pem
+*.key
+*.p12
+*.pfx
